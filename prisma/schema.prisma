@@ -1,0 +1,154 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id                  String   @id @default(uuid())
+  subdomain           String   @unique
+  status              String   @default("active")
+  razaoSocial         String
+  nomeFantasia        String?
+  cnpj                String   @unique
+  inscricaoMunicipal  String?
+  ie                  String?
+  endereco            Json?
+  logoUrl             String?
+  planId              String?
+  planStatus          String   @default("trial")
+  planInicio          DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  settings            TenantSettings?
+  users               User[]
+  clients             Client[]
+  invoices            Invoice[]
+  drafts              Draft[]
+  plan                Plan?    @relation(fields: [planId], references: [id])
+
+  @@index([planId])
+  @@map("tenants")
+}
+
+model Plan {
+  id            String   @id @default(uuid())
+  nome          String
+  slug          String   @unique
+  precoMensal   Decimal  @db.Decimal(10, 2)
+  limiteNotas   Int      @default(0)
+  maxUsuarios   Int      @default(1)
+  features      Json     @default("[]")
+  ativo         Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenants       Tenant[]
+
+  @@map("plans")
+}
+
+model TenantSettings {
+  id                   String   @id @default(uuid())
+  tenantId             String   @unique
+  certificateType      String?
+  certificateContent   Bytes?
+  certificatePassword  String?
+  apiKeys              Json?
+  nfseVersion          String   @default("v1")
+  ambiente             String   @default("homologacao")
+  certExpiresAt        DateTime?
+  features             Json     @default("{}")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  tenant               Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_settings")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  tenantId     String
+  email        String   @unique
+  password     String
+  nome         String
+  role         String   @default("user")
+  status       String   @default("active")
+  tokenVersion Int      @default(1)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([email])
+  @@map("users")
+}
+
+model Client {
+  id              String   @id @default(uuid())
+  tenantId        String
+  tipoPessoa      String
+  nomeRazaoSocial String
+  cpfCnpj         String
+  email           String?
+  telefone        String?
+  endereco        Json?
+  dataCadastro    DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoices        Invoice[]
+
+  @@index([tenantId])
+  @@index([tenantId, cpfCnpj])
+  @@map("clients")
+}
+
+model Invoice {
+  id           String    @id @default(uuid())
+  tenantId     String
+  clientId     String
+  numeroNota   Int?
+  serie        String?
+  tipoNfse     String    @default("NFS-e")
+  status       String    @default("rascunho")
+  xmlEnviado   String?   @db.Text
+  xmlRetorno   String?   @db.Text
+  chaveAcesso  String?
+  valorTotal   Decimal?  @db.Decimal(15, 2)
+  dataEmissao  DateTime?
+  urlImpressao String?
+  protocolo    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client       Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, dataEmissao])
+  @@map("invoices")
+}
+
+model Draft {
+  id        String   @id @default(uuid())
+  tenantId  String
+  nome      String   @default("Rascunho")
+  formData  Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, createdAt])
+  @@map("drafts")
+}

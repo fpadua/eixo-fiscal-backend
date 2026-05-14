@@ -1,0 +1,7 @@
+node_modules/
+.env
+certs/*.pfx
+certs/*.p12
+*.log
+
+/src/generated/prisma
