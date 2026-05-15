@@ -37,7 +37,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     useDefaults: true,
     directives: {
-      connectSrc: ["'self'", 'http://*.localhost:3000', 'http://localhost:3001', 'http://*.localhost:3001', process.env.FRONTEND_URL].filter(Boolean),
+      connectSrc: ["'self'", 'http://*.localhost:3000', 'http://localhost:3001', 'http://*.localhost:3001', process.env.FRONTEND_URL, 'https://*.vercel.app'].filter(Boolean),
     },
   },
 }));
@@ -47,6 +47,8 @@ app.use(cors({
     const allowed = [config.frontendUrl].filter(Boolean);
     // Aceitar qualquer subdomínio de localhost
     if (origin && /^https?:\/\/.*localhost:\d+$/.test(origin)) return callback(null, true);
+    // Aceitar qualquer subdomínio do Vercel (testes)
+    if (origin && /^https?:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin)) return callback(null, true);
     if (allowed.includes(origin)) return callback(null, true);
     callback(null, false);
   },

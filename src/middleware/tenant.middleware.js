@@ -31,7 +31,8 @@ function extractSubdomain(host) {
 async function tenantMiddleware(req, res, next) {
   try {
     const host = req.get('host') || '';
-    const subdomain = extractSubdomain(host);
+    const headerSubdomain = req.get('x-subdomain');
+    const subdomain = headerSubdomain || extractSubdomain(host);
     const prisma = require('../lib/prisma');
 
     let tenantId = null;
