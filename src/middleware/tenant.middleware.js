@@ -54,7 +54,27 @@ async function tenantMiddleware(req, res, next) {
       tenantId = tenant.id;
       req.tenant = tenant;
     } else {
-      tenantId = req.headers['x-tenant-id'];
+      // Tentativa: subdomain vindo do body (enviado pelo frontend via ?tenant=)
+      if (req.body && (req.body.tenant || req.body.subdomain)) {
+        const bodySubdomain = (req.body.tenant || req.body.subdomain).toLowerCase().trim();
+        if (bodySubdomain) {
+          const tenant = await prisma.tenant.findUnique({
+            where: { subdomain: bodySubdomain },
+            include: { settings: true },
+          });
+          if (tenant) {
+            if (tenant.status !== 'active') {
+              return res.status(403).json({ erro: 'Conta desativada', code: 'TENANT_INACTIVE' });
+            }
+            tenantId = tenant.id;
+            req.tenant = tenant;
+          }
+        }
+      }
+
+      if (!tenantId) {
+        tenantId = req.headers['x-tenant-id'];
+      }
 
       if (!tenantId && req.user && req.user.tenantId) {
         tenantId = req.user.tenantId;
@@ -64,16 +84,18 @@ async function tenantMiddleware(req, res, next) {
         tenantId = 'default-tenant-id';
       }
 
-      const tenant = await prisma.tenant.findUnique({
-        where: { id: tenantId },
-        include: { settings: true },
-      });
+      if (!req.tenant) {
+        const tenant = await prisma.tenant.findUnique({
+          where: { id: tenantId },
+          include: { settings: true },
+        });
 
-      if (!tenant) {
-        return res.status(404).json({ erro: 'Tenant não encontrado', code: 'TENANT_NOT_FOUND' });
+        if (!tenant) {
+          return res.status(404).json({ erro: 'Tenant não encontrado', code: 'TENANT_NOT_FOUND' });
+        }
+
+        req.tenant = tenant;
       }
-
-      req.tenant = tenant;
     }
 
     req.tenantId = tenantId;
