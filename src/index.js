@@ -32,24 +32,32 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const ALLOWED_ORIGINS = [
+  config.frontendUrl,
+  process.env.FRONTEND_URL,
+  'https://www.otys-store.com',
+  'https://otys-store.com',
+].filter(Boolean);
+
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
   contentSecurityPolicy: {
     useDefaults: true,
     directives: {
-      connectSrc: ["'self'", 'http://*.localhost:3000', 'http://localhost:3001', 'http://*.localhost:3001', process.env.FRONTEND_URL, 'https://*.vercel.app'].filter(Boolean),
+      connectSrc: ["'self'", ...ALLOWED_ORIGINS, 'http://*.localhost:3000', 'http://localhost:3001', 'http://*.localhost:3001', 'https://*.vercel.app'].filter(Boolean),
     },
   },
 }));
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin || process.env.NODE_ENV === 'development') return callback(null, true);
-    const allowed = [config.frontendUrl].filter(Boolean);
     // Aceitar qualquer subdomínio de localhost
     if (origin && /^https?:\/\/.*localhost:\d+$/.test(origin)) return callback(null, true);
     // Aceitar qualquer subdomínio do Vercel (testes)
     if (origin && /^https?:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin)) return callback(null, true);
-    if (allowed.includes(origin)) return callback(null, true);
+    // Aceitar qualquer subdomínio de otys-store.com
+    if (origin && /^https?:\/\/[a-z0-9-]+\.otys-store\.com$/.test(origin)) return callback(null, true);
+    if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
     callback(null, false);
   },
   credentials: true,
