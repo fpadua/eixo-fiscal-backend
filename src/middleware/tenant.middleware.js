@@ -7,6 +7,15 @@ const JWT_SECRET = (() => {
   return secret;
 })();
 
+const ROOT_DOMAINS = [
+  'onrender.com',
+  'vercel.app',
+  'netlify.app',
+  'herokuapp.com',
+  'fly.dev',
+  'railway.app',
+];
+
 function extractSubdomain(host) {
   if (!host) return null;
 
@@ -14,6 +23,9 @@ function extractSubdomain(host) {
 
   // Se for um IP (só dígitos e pontos), não tem subdomínio
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(cleanHost)) return null;
+
+  // Se for um domínio de plataforma de hospedagem conhecida, não extrair subdomínio
+  if (ROOT_DOMAINS.some(d => cleanHost.endsWith(d))) return null;
 
   const parts = cleanHost.split('.');
 
