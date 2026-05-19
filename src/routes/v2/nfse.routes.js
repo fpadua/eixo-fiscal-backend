@@ -6,7 +6,7 @@ const { authMiddleware } = require('../../middleware/auth.middleware');
 
 router.use(authMiddleware);
 
-router.post('/gerar', planGuard, controller.gerarNfse);
+router.post('/emitir-completo', planGuard, controller.gerarNfse);
 router.post('/lote/sincrono', planGuard, controller.enviarLoteDpsSincrono);
 router.post('/lote', planGuard, controller.recepcionarLoteDps);
 router.get('/consultar/lote/:protocolo', controller.consultarLoteDps);

@@ -61,8 +61,8 @@ async function emitirNfse(dados, pfxBuffer, password) {
     const numeroLote = Date.now().toString();
     const loteInfo = {
       numero: numeroLote,
-      cnpj: dados.prestador.cnpj,
-      inscricaoMunicipal: dados.prestador.inscricaoMunicipal,
+      cnpj: (dados.prestador?.cnpj) || config.prestador.cnpj,
+      inscricaoMunicipal: (dados.prestador?.inscricaoMunicipal) || config.prestador.inscricaoMunicipal,
       quantidade: 1
     };
 

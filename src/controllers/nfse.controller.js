@@ -250,6 +250,23 @@ async function emitir(req, res) {
     const tenantId = req.tenantId || 'default-tenant-id';
     const { pfxBuffer, password } = await loadCert(tenantId);
     const resultado = await nfseService.emitirNfse(parse.data, pfxBuffer, password);
+    // Salvar XML enviado (resultado.xmlEnviado) para download em homologação
+    if (resultado.xmlEnviado) {
+      const { TenantSettingsRepository } = require('../repositories/tenant.repository');
+      const repo = new TenantSettingsRepository(tenantId);
+      const filename = `nfse_emitida_${Date.now()}.xml`;
+      const filePath = await repo.saveGeneratedXml(Buffer.from(resultado.xmlEnviado, 'utf-8'), filename);
+      resultado.dados = resultado.dados || {};
+      resultado.dados.xmlFilePath = filePath;
+    }
+    // Salvar XML de resposta (resultado.xmlResposta) para download em homologação
+    if (resultado.xmlResposta) {
+      const { TenantSettingsRepository } = require('../repositories/tenant.repository');
+      const repo = new TenantSettingsRepository(tenantId);
+      const filenameResp = `nfse_resposta_${Date.now()}.xml`;
+      const filePathResp = await repo.saveGeneratedXml(Buffer.from(resultado.xmlResposta, 'utf-8'), filenameResp);
+      resultado.xmlRespostaPath = filePathResp;
+    }
     if (resultado.sucesso && parse.data.tomador) {
       const tenantId = req.tenantId || 'default-tenant-id';
       const client = await findOrCreateClient(tenantId, parse.data.tomador);
@@ -279,6 +296,23 @@ async function emitirCompleto(req, res) {
     const tenantId = req.tenantId || 'default-tenant-id';
     const { pfxBuffer, password } = await loadCert(tenantId);
     const resultado = await nfseService.emitirNfseSincrono(parse.data, pfxBuffer, password);
+    // Salvar XML enviado (resultado.xmlEnviado) para download em homologação
+    if (resultado.xmlEnviado) {
+      const { TenantSettingsRepository } = require('../repositories/tenant.repository');
+      const repo = new TenantSettingsRepository(tenantId);
+      const filename = `nfse_completa_${Date.now()}.xml`;
+      const filePath = await repo.saveGeneratedXml(Buffer.from(resultado.xmlEnviado, 'utf-8'), filename);
+      resultado.dados = resultado.dados || {};
+      resultado.dados.xmlFilePath = filePath;
+    }
+    // Salvar XML de resposta (resultado.xmlResposta) para download em homologação
+    if (resultado.xmlResposta) {
+      const { TenantSettingsRepository } = require('../repositories/tenant.repository');
+      const repo = new TenantSettingsRepository(tenantId);
+      const filenameResp = `nfse_resposta_${Date.now()}.xml`;
+      const filePathResp = await repo.saveGeneratedXml(Buffer.from(resultado.xmlResposta, 'utf-8'), filenameResp);
+      resultado.xmlRespostaPath = filePathResp;
+    }
     if (resultado.sucesso && parse.data.tomador) {
       const tenantId = req.tenantId || 'default-tenant-id';
       const client = await findOrCreateClient(tenantId, parse.data.tomador);
@@ -298,7 +332,7 @@ async function emitirCompleto(req, res) {
  * Emissão via EnviarLoteRpsSincrono (lote síncrono)
  */
 async function emitirLoteSincrono(req, res) {
-  const parse = emissaoCompletaSchema.safeParse(req.body);
+  const parse = emissaoSchema.safeParse(req.body);
   if (!parse.success) {
     return res
       .status(400)

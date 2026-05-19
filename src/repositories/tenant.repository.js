@@ -147,13 +147,13 @@ class TenantSettingsRepository {
 
   async decryptCertificate() {
     const settings = await this.find();
-    
+
     if (!settings?.certificateContent) {
       return null;
     }
 
     try {
-      const encryptionKey = this.getEncryptionKey();
+      const encryptionKey = await this.getEncryptionKey();
 
       const encryptedBuffer = Buffer.isBuffer(settings.certificateContent)
         ? settings.certificateContent
@@ -170,17 +170,26 @@ class TenantSettingsRepository {
 
       let decryptedPassword = '';
       if (settings.certificatePassword) {
-        const pwdBuffer = Buffer.isBuffer(settings.certificatePassword)
-          ? settings.certificatePassword
-          : Buffer.from(settings.certificatePassword);
+        let pwdBuffer;
+        if (settings.certificatePassword) {
+          // stored as base64 string, decode it
+          const base64Str = typeof settings.certificatePassword === 'string'
+            ? settings.certificatePassword
+            : settings.certificatePassword.toString();
+          pwdBuffer = Buffer.from(base64Str, 'base64');
+        } else {
+          pwdBuffer = null;
+        }
 
-        const ivPwd = pwdBuffer.subarray(0, 16);
-        const pwdData = pwdBuffer.subarray(16);
-        const decipherPwd = crypto.createDecipheriv('aes-256-cbc', encryptionKey, ivPwd);
-        decryptedPassword = Buffer.concat([
-          decipherPwd.update(pwdData),
-          decipherPwd.final()
-        ]).toString('utf8');
+        if (pwdBuffer) {
+          const ivPwd = pwdBuffer.subarray(0, 16);
+          const pwdData = pwdBuffer.subarray(16);
+          const decipherPwd = crypto.createDecipheriv('aes-256-cbc', encryptionKey, ivPwd);
+          decryptedPassword = Buffer.concat([
+            decipherPwd.update(pwdData),
+            decipherPwd.final()
+          ]).toString('utf8');
+        }
       }
 
       return {
@@ -192,6 +201,34 @@ class TenantSettingsRepository {
       console.error('[TenantSettings] Erro ao descriptografar certificado:', error);
       return null;
     }
+  }
+
+  async saveGeneratedXml(xmlBuffer, filename) {
+    const path = require('path');
+    const fs = require('fs');
+    const storageDir = path.resolve(__dirname, '..', '..', 'storage', 'xml');
+    if (!fs.existsSync(storageDir)) {
+      fs.mkdirSync(storageDir, { recursive: true });
+    }
+    const timestamp = Date.now();
+    const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const filePath = path.join(storageDir, `${this.tenantId}_${timestamp}_${safeName}`);
+    fs.writeFileSync(filePath, xmlBuffer);
+    return filePath;
+  }
+
+  async saveGeneratedXml(xmlBuffer, filename) {
+    const path = require('path');
+    const fs = require('fs');
+    const storageDir = path.resolve(__dirname, '..', '..', 'storage', 'xml');
+    if (!fs.existsSync(storageDir)) {
+      fs.mkdirSync(storageDir, { recursive: true });
+    }
+    const timestamp = Date.now();
+    const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const filePath = path.join(storageDir, `${this.tenantId}_${timestamp}_${safeName}`);
+    fs.writeFileSync(filePath, xmlBuffer);
+    return filePath;
   }
 
   async getFeatures() {

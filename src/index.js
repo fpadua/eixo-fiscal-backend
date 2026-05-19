@@ -95,7 +95,7 @@ app.get('/health', async (_req, res) => {
 
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/nfse', tenantMiddleware, nfseRoutes);
-app.use('/api/v2/nfse', tenantMiddleware, nfseRoutesV2);
+app.use('/api/nfse/v2', tenantMiddleware, nfseRoutesV2);
 app.use('/api/clientes', tenantMiddleware, clienteRoutes);
 app.use('/api/rascunhos', tenantMiddleware, rascunhoRoutes);
 app.use('/api/metricas', tenantMiddleware, metricasRoutes);

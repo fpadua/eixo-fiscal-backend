@@ -1,5 +1,6 @@
 const { Router } = require('express');
-const ctrl = require('../controllers/nfse.controller');
+const ctrlV1 = require('../controllers/nfse.controller');
+const ctrlV2 = require('../controllers/v2/nfse.controller');
 const soapService = require('../services/soap.service');
 const xmlService = require('../services/xml.service');
 const signService = require('../services/sign.service');
@@ -11,10 +12,10 @@ const router = Router();
 router.use(authMiddleware);
 
 // ─── Emissão ─────────────────────────────────────────────────────────────────
-router.post('/emitir', planGuard, ctrl.emitir);
-router.post('/emitir-completo', planGuard, ctrl.emitirCompleto);
-router.post('/emitir-lote-sincrono', planGuard, ctrl.emitirLoteSincrono);
-router.post('/lote/sincrono', planGuard, ctrl.emitirLoteSincrono);
+router.post('/emitir', planGuard, ctrlV1.emitir);
+router.post('/emitir-completo', planGuard, ctrlV2.gerarNfse);
+router.post('/emitir-lote-sincrono', planGuard, ctrlV1.emitirLoteSincrono);
+router.post('/lote/sincrono', planGuard, ctrlV1.emitirLoteSincrono);
 
 // ─── Testes / Diagnóstico ───────────────────────────────────────────────────
 // router.post('/testar-validador', async (req, res) => {
@@ -148,24 +149,60 @@ router.post('/testar-endpoint', async (req, res) => {
 });
 
 // ─── Consulta ────────────────────────────────────────────────────────────────
-router.get('/consultar/rps/:numero', ctrl.consultarPorRps);
-router.get('/consultar/faixa', ctrl.consultarPorFaixa);
+router.get('/consultar/rps/:numero', ctrlV1.consultarPorRps);
+router.get('/consultar/faixa', ctrlV1.consultarPorFaixa);
 
 // Consulta SITUAÇÃO de lote (ConsultarSituacaoLoteRps)
-router.get('/consultar/lote/situacao/:protocolo', ctrl.consultarSituacaoLote);
+router.get('/consultar/lote/situacao/:protocolo', ctrlV1.consultarSituacaoLote);
 // Compat: frontend legado v1 usa /consultar/situacao-lote/:protocolo
-router.get('/consultar/situacao-lote/:protocolo', ctrl.consultarSituacaoLote);
+router.get('/consultar/situacao-lote/:protocolo', ctrlV1.consultarSituacaoLote);
 
 // Consulta COMPLETA de lote (ConsultarLoteRps)
-router.get('/consultar/lote/:protocolo', ctrl.consultarLoteRps);
+router.get('/consultar/lote/:protocolo', ctrlV1.consultarLoteRps);
 
 // Consulta serviços prestados/tomados
-router.get('/consultar/prestados', ctrl.consultarServicosPrestados);
-router.get('/consultar/tomados', ctrl.consultarServicosTomados);
-router.get('/dados-cadastrais', ctrl.consultarDadosCadastrais);
+router.get('/consultar/prestados', ctrlV1.consultarServicosPrestados);
+router.get('/consultar/tomados', ctrlV1.consultarServicosTomados);
+router.get('/dados-cadastrais', ctrlV1.consultarDadosCadastrais);
 
 // ─── Cancelamento / Substituição ────────────────────────────────────────────
-router.post('/cancelar', ctrl.cancelar);
-router.post('/substituir', ctrl.substituir);
+router.post('/cancelar', ctrlV1.cancelar);
+router.post('/substituir', ctrlV1.substituir);
+
+// Rota para salvar XML gerado em homologação
+router.post('/homolog/xml', async (req, res) => {
+  try {
+    const { tenantId, filename, xmlBase64 } = req.body;
+    if (!tenantId || !filename || !xmlBase64) {
+      return res.status(400).json({ success: false, error: 'tenantId, filename e xmlBase64 são obrigatórios' });
+    }
+    const xmlBuffer = Buffer.from(xmlBase64, 'base64');
+    const { TenantSettingsRepository } = require('../repositories/tenant.repository');
+    const repo = new TenantSettingsRepository(tenantId);
+    const filePath = await repo.saveGeneratedXml(xmlBuffer, filename);
+    res.json({ success: true, filePath });
+  } catch (err) {
+    console.error('Erro ao salvar XML:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Rota para download do XML salvo em homologação
+router.get('/homolog/xml/download', async (req, res) => {
+  try {
+    const filePath = req.query.path;
+    if (!filePath) return res.status(400).json({ success: false, error: 'path query param required' });
+    const absolutePath = require('path').resolve(filePath);
+    // garantir que o caminho está dentro da pasta storage/xml
+    const baseDir = require('path').resolve(__dirname, '..', '..', 'storage', 'xml');
+    if (!absolutePath.startsWith(baseDir)) {
+      return res.status(403).json({ success: false, error: 'Acesso negado' });
+    }
+    res.sendFile(absolutePath);
+  } catch (err) {
+    console.error('Erro ao servir XML:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 module.exports = router;
