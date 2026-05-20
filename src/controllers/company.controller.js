@@ -40,6 +40,18 @@ async function uploadCertificate(req, res) {
     const certExpiresAt = extractCertExpiry(file.buffer, password);
     const settingsRepo = new TenantSettingsRepository(tenantId);
     await settingsRepo.updateCertificate(file.buffer, password, certificateType || 'A1', certExpiresAt);
+    // salvar arquivo .pfx na pasta /certs/<cnpj>/
+    const fs = require('fs');
+    const path = require('path');
+    const tenantRepo = new TenantRepository();
+    const tenant = await tenantRepo.findById(tenantId);
+    if (tenant && tenant.cnpj) {
+      const cnpjClean = tenant.cnpj.replace(/\D/g, '');
+      const dir = path.join(__dirname, '..', '..', 'certs', cnpjClean);
+      fs.mkdirSync(dir, { recursive: true });
+      const filePath = path.join(dir, `${cnpjClean}.pfx`);
+      fs.writeFileSync(filePath, file.buffer);
+    }
 
     res.json({ success: true, message: 'Certificado salvo com sucesso' });
   } catch (error) {
