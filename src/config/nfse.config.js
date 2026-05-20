@@ -78,6 +78,16 @@ function getConfig(explicitVersion) {
       inscricaoMunicipal: process.env.INSCRICAO_MUNICIPAL || '',
       cnpj: process.env.CNPJ_PRESTADOR || '',
       razaoSocial: process.env.RAZAO_SOCIAL || '',
+      fone: process.env.FONE_PRESTADOR || '',
+      email: process.env.EMAIL_PRESTADOR || '',
+      endereco: {
+        logradouro: process.env.PRESTADOR_LOGRADOURO || '',
+        numero: process.env.PRESTADOR_NUMERO || '',
+        complemento: process.env.PRESTADOR_COMPLEMENTO || '',
+        bairro: process.env.PRESTADOR_BAIRRO || '',
+        codigoMunicipio: process.env.PRESTADOR_CODIGO_MUNICIPIO || '',
+        cep: process.env.PRESTADOR_CEP || '',
+      },
     },
 
     cert: {
@@ -98,6 +108,8 @@ function getConfig(explicitVersion) {
     },
 
     // Código IBGE de Goiânia
+    codigoMunicipioNacional: process.env.CODIGO_MUNICIPIO_NACIONAL || '5002704',
+    codigoMunicipioCampoGrande: '5002704',
     codigoMunicipioGoiania: '5208707',
   };
 }

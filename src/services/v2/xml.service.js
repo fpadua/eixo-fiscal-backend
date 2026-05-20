@@ -10,295 +10,542 @@ const builder = new XMLBuilder({
 
 const NS_NFSE = 'http://www.sped.fazenda.gov.br/nfse';
 const NS_DS = 'http://www.w3.org/2000/09/xmldsig#';
+const VERSAO_SCHEMA_NACIONAL = '1.01';
+const CODIGO_MUNICIPIO_CAMPO_GRANDE = '5002704';
+const SERIE_DPS_SUPORTE = '8';
+const CNPJ_HOMOLOGACAO = '43983294000121';
 
-function gerarIdDPS(codigoMunicipio, tipoInscricao, inscricaoFederal, serie, numero) {
-  // Schema: DPS + Cód.Mun (7) + Tipo INsc (1) + INsc Federal (14) + Série DPS (5) + Núm DPS (15) = 45 chars
-  const tipo = tipoInscricao === '2' ? '1' : '2';
-  const cpfCnpj = String(inscricaoFederal).replace(/\D/g, '').padStart(14, '0');
-  const serieStr = String(serie).replace(/\D/g, '').padStart(5, '0').slice(-5);
-  // Garante que o número tenha 15 dígitos e comece com 1-9
-  const numeroStr = String(numero).replace(/\D/g, '').padStart(15, '0').slice(-15);
+const PRESTADOR_HOMOLOGACAO = {
+  cnpj: CNPJ_HOMOLOGACAO,
+  inscricaoMunicipal: '123456',
+  razaoSocial: 'Prestador Homologacao NFSe',
+  endereco: {
+    logradouro: 'Rua Barao do Rio Branco',
+    numero: '1000',
+    complemento: 'Sala 01',
+    bairro: 'Centro',
+    codigoMunicipio: CODIGO_MUNICIPIO_CAMPO_GRANDE,
+    cep: '79002000',
+  },
+  fone: '6733334444',
+  email: 'homologacao@example.com',
+};
+
+function onlyDigits(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function nonEmpty(value) {
+  const text = String(value ?? '').trim();
+  return text || undefined;
+}
+
+function withoutEmptyValues(obj = {}) {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, value]) => nonEmpty(value) !== undefined)
+  );
+}
+
+function formatDecimal(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number.toFixed(2) : Number(fallback).toFixed(2);
+}
+
+function sanitizeFixedDigits(value, length, fallback) {
+  const digits = onlyDigits(value || fallback);
+  return digits.padStart(length, '0').slice(-length);
+}
+
+function sanitizeMaxDigits(value, maxLength, fallback) {
+  const digits = onlyDigits(value || fallback);
+  return digits.slice(0, maxLength) || fallback;
+}
+
+function isValidCnpj(value) {
+  const cnpj = onlyDigits(value);
+  if (cnpj.length !== 14 || /^(\d)\1+$/.test(cnpj)) return false;
+
+  const calc = (base) => {
+    const weights = base.length === 12
+      ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+      : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+
+    const sum = base
+      .split('')
+      .reduce((total, digit, index) => total + Number(digit) * weights[index], 0);
+    const rest = sum % 11;
+    return rest < 2 ? 0 : 11 - rest;
+  };
+
+  return calc(cnpj.slice(0, 12)) === Number(cnpj[12])
+    && calc(cnpj.slice(0, 13)) === Number(cnpj[13]);
+}
+
+function getCodigoMunicipio(dados = {}) {
+  return onlyDigits(
+    dados.codigoMunicipio
+      || dados.codigoMunicipioPrestador
+      || dados.prestador?.endereco?.codigoMunicipio
+      || config.codigoMunicipioNacional
+      || config.codigoMunicipioCampoGrande
+      || CODIGO_MUNICIPIO_CAMPO_GRANDE
+  );
+}
+
+function getCodigoMunicipioPrestacao(dados = {}, codigoMunicipio) {
+  return onlyDigits(
+    dados.servico?.cLocPrestacao
+      || dados.cLocPrestacao
+      || dados.servico?.cMunIncid
+      || dados.codigoMunicipioIncidencia
+      || dados.servico?.municipioIncidencia
+      || codigoMunicipio
+      || CODIGO_MUNICIPIO_CAMPO_GRANDE
+  );
+}
+
+function getSerieDps(dados = {}) {
+  const digits = onlyDigits(dados.serieDps || dados.rps?.serie || SERIE_DPS_SUPORTE);
+  const serie = String(Number.parseInt(digits || SERIE_DPS_SUPORTE, 10));
+  return serie === '0' || serie === 'NaN' ? SERIE_DPS_SUPORTE : serie.slice(0, 5);
+}
+
+function getNumeroDps(dados = {}) {
+  const raw = onlyDigits(dados.numeroDps || dados.rps?.numero);
+  const parsed = Number.parseInt(raw || '0', 10);
+  if (Number.isFinite(parsed) && parsed > 0) return String(parsed).slice(0, 15);
+
+  const timestamp = Date.now().toString();
+  return String(Number.parseInt(timestamp.slice(-12), 10)).slice(0, 15);
+}
+
+function formatarDhEmi(value) {
+  if (typeof value === 'string') {
+    const normalized = value.replace(/\.\d{3}/, '');
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:00$/.test(normalized)) {
+      return normalized;
+    }
+  }
+
+  const date = value ? new Date(value) : new Date();
+  const source = Number.isNaN(date.getTime()) ? new Date() : date;
+  const brt = new Date(source.getTime() - (3 * 60 * 60 * 1000));
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${brt.getUTCFullYear()}-${pad(brt.getUTCMonth() + 1)}-${pad(brt.getUTCDate())}`
+    + `T${pad(brt.getUTCHours())}:${pad(brt.getUTCMinutes())}:${pad(brt.getUTCSeconds())}-03:00`;
+}
+
+function formatarData(value) {
+  if (typeof value === 'string') {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    if (/^\d{8}$/.test(value)) return `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`;
+  }
+
+  const date = value ? new Date(value) : new Date();
+  const source = Number.isNaN(date.getTime()) ? new Date() : date;
+  return source.toISOString().slice(0, 10);
+}
+
+function resolvePrestador(dados = {}) {
+  const informado = dados.prestador || {};
+  const configPrestador = config.prestador || {};
+  const base = {
+    ...PRESTADOR_HOMOLOGACAO,
+    ...withoutEmptyValues(configPrestador),
+    ...withoutEmptyValues(informado),
+    endereco: {
+      ...PRESTADOR_HOMOLOGACAO.endereco,
+      ...withoutEmptyValues(configPrestador.endereco),
+      ...withoutEmptyValues(informado.endereco),
+    },
+  };
+
+  let documento = onlyDigits(base.cnpj || base.cpf);
+  if (config.homologacao && (!documento || (documento.length === 14 && !isValidCnpj(documento)))) {
+    documento = CNPJ_HOMOLOGACAO;
+  }
+
+  if (documento.length !== 14 && documento.length !== 11) {
+    throw new Error('Prestador v2 deve ter CNPJ ou CPF valido para gerar a DPS nacional.');
+  }
+
+  if (documento.length === 14 && !isValidCnpj(documento)) {
+    throw new Error('CNPJ do prestador invalido para gerar a DPS nacional.');
+  }
+
+  const inscricaoMunicipal = nonEmpty(base.inscricaoMunicipal || base.IM || PRESTADOR_HOMOLOGACAO.inscricaoMunicipal);
+  if (!inscricaoMunicipal) {
+    throw new Error('Inscricao municipal do prestador e obrigatoria para a DPS nacional.');
+  }
+
+  return {
+    documento,
+    tipoInscricaoFederal: documento.length === 14 ? '2' : '1',
+    inscricaoMunicipal: String(inscricaoMunicipal).slice(0, 15),
+    razaoSocial: nonEmpty(base.razaoSocial || base.xNome || PRESTADOR_HOMOLOGACAO.razaoSocial),
+    endereco: base.endereco,
+    fone: onlyDigits(base.fone || base.telefone || PRESTADOR_HOMOLOGACAO.fone),
+    email: nonEmpty(base.email || PRESTADOR_HOMOLOGACAO.email),
+  };
+}
+
+function montarEndereco(endereco = {}, codigoMunicipio) {
+  const logradouro = nonEmpty(endereco.logradouro || endereco.xLgr);
+  const numero = nonEmpty(endereco.numero || endereco.nro || 'S/N');
+  const bairro = nonEmpty(endereco.bairro || endereco.xBairro);
+  const cep = onlyDigits(endereco.cep || endereco.CEP);
+  const municipio = onlyDigits(endereco.codigoMunicipio || endereco.cMun || codigoMunicipio);
+
+  if (!logradouro || !numero || !bairro || !cep || !municipio) return null;
+
+  const end = {
+    endNac: {
+      cMun: municipio,
+      CEP: cep.padStart(8, '0').slice(-8),
+    },
+    xLgr: logradouro,
+    nro: numero,
+  };
+
+  const complemento = nonEmpty(endereco.complemento || endereco.xCpl);
+  if (complemento) end.xCpl = complemento;
+  end.xBairro = bairro;
+
+  return end;
+}
+
+function montarPessoaTomador(tomador = {}, codigoMunicipio) {
+  const documento = onlyDigits(tomador.cnpj || tomador.cpf || tomador.documento);
+  if (!documento) return null;
+
+  const pessoa = {};
+  if (documento.length === 14) pessoa.CNPJ = documento;
+  else if (documento.length === 11) pessoa.CPF = documento;
+  else return null;
+
+  const inscricaoMunicipal = nonEmpty(tomador.IM || tomador.inscricaoMunicipal);
+  if (inscricaoMunicipal) pessoa.IM = String(inscricaoMunicipal).slice(0, 15);
+
+  pessoa.xNome = nonEmpty(tomador.razaoSocial || tomador.xNome || 'Tomador Homologacao');
+
+  const endereco = montarEndereco(tomador.endereco, codigoMunicipio);
+  if (endereco) pessoa.end = endereco;
+
+  const fone = onlyDigits(tomador.fone || tomador.telefone || tomador.contato?.telefone);
+  if (fone) pessoa.fone = fone;
+
+  const email = nonEmpty(tomador.email || tomador.contato?.email);
+  if (email) pessoa.email = email;
+
+  return pessoa;
+}
+
+function montarPrestador(prestador, codigoMunicipio) {
+  const xml = prestador.documento.length === 14
+    ? { CNPJ: prestador.documento }
+    : { CPF: prestador.documento };
+
+  xml.IM = prestador.inscricaoMunicipal;
+  if (prestador.razaoSocial) xml.xNome = prestador.razaoSocial;
+
+  const endereco = montarEndereco(prestador.endereco, codigoMunicipio);
+  if (endereco) xml.end = endereco;
+
+  if (prestador.fone) xml.fone = prestador.fone;
+  if (prestador.email) xml.email = prestador.email;
+
+  const opSimpNac = nonEmpty(prestador.opSimpNac || prestador.optanteSimplesNacional) || 1;
+  xml.regTrib = {
+    opSimpNac: String(opSimpNac),
+  };
+
+  if (String(opSimpNac) === '3') {
+    xml.regTrib.regApTribSN = String(nonEmpty(prestador.regApTribSN || prestador.regimeApuracao) || 1);
+  }
+
+  xml.regTrib.regEspTrib = String(nonEmpty(prestador.regEspTrib) || nonEmpty(prestador.regimeEspecialTributacao) || 0);
+
+  return xml;
+}
+
+function normalizarCTribNac(dados = {}) {
+  const digits = onlyDigits(dados.servico?.cTribNac || dados.cTribNac || dados.itemListaServico);
+  return digits.length === 6 ? digits : '010100';
+}
+
+function normalizarCTribMun(dados = {}) {
+  return sanitizeMaxDigits(
+    dados.servico?.cTribMun || dados.servico?.codigoTributacao || dados.codigoTributacao,
+    10,
+    '1010100000'
+  );
+}
+
+function montarIbsCbs(dados = {}) {
+  const origem = typeof dados.IBSCBS === 'object'
+    ? dados.IBSCBS
+    : (typeof dados.ibsCBS === 'object' ? dados.ibsCBS : {});
+  const gIBSCBS = origem.valores?.trib?.gIBSCBS || origem.trib?.gIBSCBS || origem.gIBSCBS || {};
+
+  return {
+    finNFSe: String(origem.finNFSe ?? dados.finNFSe ?? 0),
+    cIndOp: sanitizeFixedDigits(origem.cIndOp ?? dados.cIndOp, 6, '000000'),
+    indDest: String(origem.indDest ?? dados.indDest ?? 0),
+    valores: {
+      trib: {
+        gIBSCBS: {
+          CST: sanitizeFixedDigits(gIBSCBS.CST ?? dados.CST, 3, '000'),
+          cClassTrib: sanitizeFixedDigits(gIBSCBS.cClassTrib ?? dados.cClassTrib, 6, '000000'),
+        },
+      },
+    },
+  };
+}
+
+function gerarIdDPS(codigoMunicipio, tipoInscricaoFederal, inscricaoFederal, serie, numero) {
+  const tipo = String(tipoInscricaoFederal || (onlyDigits(inscricaoFederal).length === 14 ? '2' : '1'));
+  const cpfCnpj = onlyDigits(inscricaoFederal).padStart(14, '0').slice(-14);
+  const serieStr = onlyDigits(serie).padStart(5, '0').slice(-5);
+  const numeroStr = onlyDigits(numero).padStart(15, '0').slice(-15);
   const resultado = `DPS${codigoMunicipio}${tipo}${cpfCnpj}${serieStr}${numeroStr}`;
-  
+
   if (resultado.length !== 45) {
-    console.log('[XML] AVISO: ID DPS tem ' + resultado.length + ' chars, esperado 45');
+    console.log('[XML v2] AVISO: ID DPS tem ' + resultado.length + ' chars, esperado 45');
   }
   return resultado;
 }
 
-function gerarIdNFSe(codigoMunicipio, ambienteGerador, tipoInscricao, inscricaoFederal, numeroNota, anoMes, codigoNumero) {
-  const tipo = tipoInscricao === '2' ? '1' : '2';
-  const cpfCnpj = inscricaoFederal.padStart(14, '0');
+function gerarIdNFSe(codigoMunicipio, ambienteGerador, tipoInscricaoFederal, inscricaoFederal, numeroNota, anoMes, codigoNumero) {
+  const tipo = String(tipoInscricaoFederal || (onlyDigits(inscricaoFederal).length === 14 ? '2' : '1'));
+  const cpfCnpj = onlyDigits(inscricaoFederal).padStart(14, '0').slice(-14);
   const numeroNotaStr = String(numeroNota).padStart(13, '0');
   const codigoNumeroStr = String(codigoNumero).padStart(9, '0');
   const dv = '1';
   return `NFS${codigoMunicipio}${ambienteGerador}${tipo}${cpfCnpj}${numeroNotaStr}${anoMes}${codigoNumeroStr}${dv}`;
 }
 
-function gerarXmlDps(dados, numeroLote = null) {
-  const now = new Date();
-  // Formato: 2026-05-07T10:11:22-03:00 (ajusta para o fuso local do prestador)
-  const dhEmissao = now.toISOString().replace(/\.\d+Z$/, '-03:00'); 
-  const dCompet = dados.dCompet ? (dados.dCompet.includes('-') ? dados.dCompet : `${dados.dCompet.slice(0, 4)}-${dados.dCompet.slice(4, 6)}-${dados.dCompet.slice(6, 8)}`) : now.toISOString().slice(0, 10);
-  // nDPS deve ter 1-15 dígitos e começar com 1-9 (não pode iniciar com 0)
-  // O schema exige: [1-9]{1}[0-9]{0,14}
-  let numeroDps = dados.numeroDps;
-  if (!numeroDps || numeroDps < 1) {
-    // Gera número que NÃO começa com zero
-    const timestamp = Date.now().toString();
-    const baseNum = parseInt(timestamp.slice(-12));
-    // Garante número válido (mínimo 7 dígitos, máximo 15, começa com 1-9)
-    const num = Math.max(1000000, Math.min(baseNum, 999999999999999));
-    numeroDps = String(num); // Sem padding para não ter leading zeros
-  } else {
-    // Remove zeros à esquerda e garante que comece com 1-9
-    numeroDps = String(parseInt(numeroDps));
-  }
-  const serieDps = dados.serieDps ? dados.serieDps.replace(/\D/g, '').slice(-5).padStart(5, '0') : '00001';
-
-  const prestador = dados.prestador || config.prestador;
-  const cnpjPrestador = (prestador.cnpj || '').replace(/\D/g, '');
-  const tipoInscricao = cnpjPrestador.length === 14 ? '1' : '2';
-
-  const codigoMunicipio = dados.codigoMunicipio || config.codigoMunicipioGoiania;
-  const idDps = gerarIdDPS(codigoMunicipio, tipoInscricao, cnpjPrestador, serieDps, numeroDps);
-
-  const tribNac = dados.servico?.cTribNac || dados.itemListaServico?.replace('.', '') || '010100';
-  const cNBS = dados.servico?.cNBS || '';
-  const xDescServ = dados.servico?.discriminacao || dados.discriminacao || 'Serviços prestados';
-  const cTribMun = dados.servico?.cTribMun || '';
+function montarDpsObject(dados, includeNamespace = false) {
+  const codigoMunicipio = getCodigoMunicipio(dados);
+  const codigoMunicipioPrestacao = getCodigoMunicipioPrestacao(dados, codigoMunicipio);
+  const prestador = resolvePrestador(dados);
+  const serieDps = getSerieDps(dados);
+  const numeroDps = getNumeroDps(dados);
+  const idDps = gerarIdDPS(
+    codigoMunicipio,
+    prestador.tipoInscricaoFederal,
+    prestador.documento,
+    serieDps,
+    numeroDps
+  );
 
   const vServicos = Number(dados.servico?.valorServicos || dados.valorServicos || 0);
   const vDescIncond = Number(dados.servico?.vDescIncond || dados.vDescIncond || 0);
   const vDescCond = Number(dados.servico?.vDescCond || dados.vDescCond || 0);
   const pAliq = Number(dados.servico?.aliquota || dados.aliquota || 2);
-
-  const vBC = vServicos - vDescIncond - vDescCond;
-  const vIssqn = (vBC * pAliq / 100);
   const issRetido = dados.servico?.issRetido || dados.issRetido || false;
-  const vRetIss = issRetido ? vIssqn : 0;
+  const cNBS = nonEmpty(dados.servico?.cNBS || dados.cNBS);
 
-  const tribISSQN = dados.tribISSQN || dados.tributacao || 1;
-  const tpRetISSQN = issRetido ? 2 : 1;
+  const tribFed = {};
+  if (Number(dados.tribFed?.vRetCP) > 0) tribFed.vRetCP = formatDecimal(dados.tribFed.vRetCP);
+  if (Number(dados.tribFed?.vRetIRRF) > 0) tribFed.vRetIRRF = formatDecimal(dados.tribFed.vRetIRRF);
+  if (Number(dados.tribFed?.vRetCSLL) > 0) tribFed.vRetCSLL = formatDecimal(dados.tribFed.vRetCSLL);
 
-  const opSimpNac = dados.optanteSimplesNacional ? 3 : 1;
-  const regApTribSN = dados.regApTribSN || dados.regimeApuracao || 1;
-
-  // Endereço completo do prestador (obrigatório pelo schema)
-  const prestadorEndereco = prestador.endereco || {};
-
-  const xmlDps = {
-    '@_xmlns': NS_NFSE,
-    infDPS: {
-      '@_Id': idDps,
-      tpAmb: dados.tpAmb || config.tpAmb,
-      dhEmi: dhEmissao,
-      verAplic: dados.verAplic || 'NFSe-GYN-v2',
-      serie: serieDps,
-      nDPS: String(numeroDps),
-      dCompet: dCompet,
-      tpEmit: dados.tpEmit || 1,
-      cLocEmi: codigoMunicipio,
-      prest: {
-        ...(cnpjPrestador.length === 14 ? { CNPJ: cnpjPrestador } : { CPF: cnpjPrestador }),
-        IM: String(prestador.inscricaoMunicipal || '').replace(/\D/g, ''),
-        xNome: prestador.razaoSocial || '',
-        ...(prestadorEndereco.xLgr ? {
-          enderPrest: {
-            xLgr: prestadorEndereco.logradouro || prestadorEndereco.xLgr || '',
-            nro: prestadorEndereco.numero || prestadorEndereco.nro || '',
-            xCpl: prestadorEndereco.complemento || prestadorEndereco.xCpl || '',
-            xBairro: prestadorEndereco.bairro || prestadorEndereco.xBairro || '',
-            cMun: prestadorEndereco.codigoMunicipio || codigoMunicipio,
-            xMun: prestadorEndereco.municipio || prestadorEndereco.xMun || 'Goiânia',
-            UF: prestadorEndereco.uf || 'GO',
-            CEP: String(prestadorEndereco.cep || '00000000').replace(/\D/g, ''),
-          }
-        } : {}),
-        ...(dados.fonePrest ? { fone: dados.fonePrest } : {}),
-        ...(dados.emailPrest ? { email: dados.emailPrest } : {}),
-        regTrib: {
-          opSimpNac: opSimpNac,
-          ...(opSimpNac === 3 ? { regApTribSN: regApTribSN } : {}),
-          ...(dados.regEspTrib ? { regEspTrib: dados.regEspTrib } : {}),
-        },
-      },
-      ...(dados.tomador ? {
-        tom: {
-          ...(dados.tomador.cnpj ? { CNPJ: String(dados.tomador.cnpj || '').replace(/\D/g, '') } : {}),
-          ...(dados.tomador.cpf ? { CPF: String(dados.tomador.cpf || '').replace(/\D/g, '') } : {}),
-          ...(dados.tomador.IM ? { IM: String(dados.tomador.IM).replace(/\D/g, '') } : {}),
-          xNome: dados.tomador.razaoSocial || '',
-          ...(dados.tomador.endereco ? {
-            enderTom: {
-              xLgr: dados.tomador.endereco.logradouro || '',
-              nro: dados.tomador.endereco.numero || '',
-              ...(dados.tomador.endereco.complemento ? { xCpl: dados.tomador.endereco.complemento } : {}),
-              xBairro: dados.tomador.endereco.bairro || '',
-              cMun: dados.tomador.endereco.codigoMunicipio || codigoMunicipio,
-              xMun: dados.tomador.endereco.municipio || '',
-              UF: dados.tomador.endereco.uf || 'GO',
-              CEP: String(dados.tomador.endereco.cep || '00000000').replace(/\D/g, ''),
-            },
-          } : {}),
-          ...(dados.tomador.fone ? { fone: dados.tomador.fone } : {}),
-          ...(dados.tomador.email ? { email: dados.tomador.email } : {}),
-        },
-      } : {}),
-      serv: {
-        locPrest: {
-          cLocPrestacao: dados.servico?.cLocPrestacao || codigoMunicipio,
-        },
-        cServ: {
-          cTribNac: tribNac,
-          ...(cTribMun ? { cTribMun: cTribMun } : {}),
-          xDescServ: xDescServ,
-          ...(cNBS ? { cNBS: cNBS } : {}),
-        },
-      },
-      valores: {
-        vServPrest: {
-          vServ: vServicos.toFixed(2),
-        },
-        ...(vDescIncond > 0 || vDescCond > 0 ? {
-          vDescCondIncond: {
-            ...(vDescIncond > 0 ? { vDescIncond: vDescIncond } : {}),
-            ...(vDescCond > 0 ? { vDescCond: vDescCond } : {}),
-          },
-        } : {}),
-        trib: {
-          tribMun: {
-            tribISSQN: tribISSQN,
-            ...(dados.cPaisResult ? { cPaisResult: dados.cPaisResult } : {}),
-            tpRetISSQN: tpRetISSQN,
-            ...(pAliq > 0 ? { pAliq: pAliq.toFixed(4) } : {}),
-          },
-          totTrib: {
-            indTotTrib: 0
-          },
-          ...(dados.tribFed ? {
-            tribFed: {
-              ...(dados.tribFed.vRetIRRF ? { vRetIRRF: Number(dados.tribFed.vRetIRRF).toFixed(2) } : {}),
-              ...(dados.tribFed.vRetCSLL ? { vRetCSLL: Number(dados.tribFed.vRetCSLL).toFixed(2) } : {}),
-            },
-          } : {}),
-        },
-      },
-      ...(dados.pag ? { pag: dados.pag } : {}),
+  const trib = {
+    tribMun: {
+      tribISSQN: String(dados.tribISSQN || dados.tributacao || 1),
+      tpRetISSQN: issRetido ? '2' : '1',
+      pAliq: formatDecimal(pAliq),
     },
   };
 
-  return builder.build(xmlDps);
+  if (dados.cPaisResult) trib.tribMun.cPaisResult = String(dados.cPaisResult);
+  if (Object.keys(tribFed).length > 0) trib.tribFed = tribFed;
+  trib.totTrib = { indTotTrib: '0' };
+
+  const cServ = {
+    cTribNac: normalizarCTribNac(dados),
+    cTribMun: normalizarCTribMun(dados),
+    xDescServ: nonEmpty(dados.servico?.discriminacao || dados.discriminacao || 'Servicos prestados'),
+  };
+  if (cNBS) cServ.cNBS = cNBS;
+
+  const serv = {
+    locPrest: {
+      cLocPrestacao: codigoMunicipioPrestacao,
+    },
+    cServ,
+  };
+
+  if (dados.infAdPrest || dados.infAdFisco) {
+    serv.infoCompl = {};
+    if (dados.infAdPrest) serv.infoCompl.xInfComp = String(dados.infAdPrest).slice(0, 2000);
+    if (dados.infAdFisco) serv.infoCompl.xInfAdFisco = String(dados.infAdFisco).slice(0, 2000);
+  }
+
+  const valores = {
+    vServPrest: {
+      vServ: formatDecimal(vServicos),
+    },
+  };
+
+  if (vDescIncond > 0 || vDescCond > 0) {
+    valores.vDescCondIncond = {};
+    if (vDescIncond > 0) valores.vDescCondIncond.vDescIncond = formatDecimal(vDescIncond);
+    if (vDescCond > 0) valores.vDescCondIncond.vDescCond = formatDecimal(vDescCond);
+  }
+
+  valores.trib = trib;
+
+  const infDPS = {
+    '@_Id': idDps,
+    tpAmb: String(dados.tpAmb || config.tpAmb || 2),
+    dhEmi: formatarDhEmi(dados.dhEmi || dados.rps?.dataEmissao),
+    verAplic: String(dados.verAplic || 'NFSe-Nacional-v2').slice(0, 20),
+    serie: serieDps,
+    nDPS: numeroDps,
+    dCompet: formatarData(dados.dCompet || dados.rps?.competencia || dados.rps?.dataEmissao),
+    tpEmit: String(dados.tpEmit || 1),
+    cLocEmi: codigoMunicipio,
+    prest: montarPrestador({
+      ...prestador,
+      opSimpNac: dados.optanteSimplesNacional ? 3 : 1,
+      regApTribSN: dados.regApTribSN || dados.regimeApuracao,
+      regEspTrib: dados.regEspTrib ?? dados.regimeEspecialTributacao,
+    }, codigoMunicipio),
+  };
+
+  const tomador = montarPessoaTomador(dados.tomador, codigoMunicipio);
+  if (tomador) infDPS.toma = tomador;
+  infDPS.serv = serv;
+  infDPS.valores = valores;
+  infDPS.IBSCBS = montarIbsCbs(dados);
+
+  if (dados.pag) infDPS.pag = dados.pag;
+
+  const dps = {
+    '@_versao': VERSAO_SCHEMA_NACIONAL,
+    infDPS,
+  };
+
+  if (includeNamespace) {
+    dps['@_xmlns'] = NS_NFSE;
+    dps['@_xmlns:dsig'] = NS_DS;
+  }
+
+  return { DPS: dps };
+}
+
+function gerarXmlDps(dados) {
+  return builder.build(montarDpsObject(dados, true));
+}
+
+function removerDeclaracaoXml(xml) {
+  return String(xml || '').replace(/<\?xml.*?\?>\s*/i, '').trim();
+}
+
+function montarPrestadorLote(cnpjPrestador, inscricaoMunicipal) {
+  const documento = onlyDigits(cnpjPrestador || resolvePrestador().documento);
+  return {
+    ...(documento.length === 14 ? { CNPJ: documento } : { CPF: documento }),
+    IM: String(inscricaoMunicipal || resolvePrestador().inscricaoMunicipal),
+  };
 }
 
 function gerarXmlLoteDps(listaDps, numeroLote, cnpjPrestador, inscricaoMunicipal) {
   const idLote = `LOTE${numeroLote}`;
-  const cnpj = cnpjPrestador.replace(/\D/g, '');
-  const tipoInscricao = cnpj.length === 14 ? '1' : '2';
+  const dpsXml = listaDps
+    .map((dps) => removerDeclaracaoXml(dps.xml || gerarXmlDps(dps)))
+    .join('\n');
+  const prestador = montarPrestadorLote(cnpjPrestador, inscricaoMunicipal);
 
-  const listaDpsXml = listaDps.map(dps => dps.xml).join('\n');
-
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<LoteDps xmlns="${NS_NFSE}" ${idLote}>
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<LoteDps xmlns="${NS_NFSE}" Id="${idLote}" versao="${VERSAO_SCHEMA_NACIONAL}">
   <NumeroLote>${numeroLote}</NumeroLote>
   <Prestador>
-    <CpfCnpj>
-      ${cnpj.length === 14 ? `<Cnpj>${cnpj}</Cnpj>` : `<Cpf>${cnpj}</Cpf>`}
-    </CpfCnpj>
-    <InscricaoMunicipal>${inscricaoMunicipal}</InscricaoMunicipal>
+    ${prestador.CNPJ ? `<CNPJ>${prestador.CNPJ}</CNPJ>` : `<CPF>${prestador.CPF}</CPF>`}
+    <IM>${prestador.IM}</IM>
   </Prestador>
-  <QuantidadeDPS>${listaDps.length}</QuantidadeDPS>
+  <QuantidadeDps>${listaDps.length}</QuantidadeDps>
   <ListaDps>
-    ${listaDps.map((d, i) => `<DPS>${d.xml}</DPS>`).join('\n')}
+    ${dpsXml}
   </ListaDps>
 </LoteDps>`;
-
-  return xml;
 }
 
 function gerarXmlGerarNfse(dados) {
   const dps = dados.dps || dados;
-  const xmlDps = gerarXmlDps(dps);
+  const xmlObj = {
+    GerarNfseEnvio: {
+      '@_xmlns': NS_NFSE,
+      '@_xmlns:dsig': NS_DS,
+      DPS: montarDpsObject(dps, false).DPS,
+    },
+  };
 
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<GerarNfseEnvio xmlns="${NS_NFSE}" versao="1.01">
-  <DPS versao="1.01">
-    ${xmlDps}
-  </DPS>
-</GerarNfseEnvio>`;
-
-  return xml;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n${builder.build(xmlObj)}`;
 }
 
 function gerarXmlEnviarLoteDpsSincrono(listaDps, numeroLote) {
-  const cnpjPrestador = config.prestador.cnpj.replace(/\D/g, '');
-  const inscricaoMunicipal = config.prestador.inscricaoMunicipal;
+  const prestador = resolvePrestador();
+  const xmlObj = {
+    EnviarLoteDpsSincronoEnvio: {
+      '@_xmlns': NS_NFSE,
+      '@_xmlns:dsig': NS_DS,
+      LoteDps: {
+        '@_Id': `LOTE${numeroLote}`,
+        '@_versao': VERSAO_SCHEMA_NACIONAL,
+        NumeroLote: String(numeroLote),
+        Prestador: montarPrestadorLote(prestador.documento, prestador.inscricaoMunicipal),
+        QuantidadeDps: listaDps.length,
+        ListaDps: {
+          DPS: listaDps.map((dps) => montarDpsObject(dps, false).DPS),
+        },
+      },
+    },
+  };
 
-  const listaXml = listaDps.map(dps => gerarXmlDps(dps));
-
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<EnviarLoteDpsSincronoEnvio xmlns="${NS_NFSE}" versao="1.01">
-  <LoteDps versao="1.01">
-    <NumeroLote>${numeroLote}</NumeroLote>
-    <Prestador>
-      <CpfCnpj>
-        ${cnpjPrestador.length === 14 ? `<Cnpj>${cnpjPrestador}</Cnpj>` : `<Cpf>${cnpjPrestador}</Cpf>`}
-      </CpfCnpj>
-      <InscricaoMunicipal>${inscricaoMunicipal}</InscricaoMunicipal>
-    </Prestador>
-    <QuantidadeDPS>${listaDps.length}</QuantidadeDPS>
-    <ListaDps>
-      ${listaXml.map(xml => `<DPS>${xml}</DPS>`).join('\n')}
-    </ListaDps>
-  </LoteDps>
-</EnviarLoteDpsSincronoEnvio>`;
-
-  return xml;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n${builder.build(xmlObj)}`;
 }
 
 function gerarXmlRecepcaoLoteDps(listaDps, numeroLote) {
-  const cnpjPrestador = config.prestador.cnpj.replace(/\D/g, '');
-  const inscricaoMunicipal = config.prestador.inscricaoMunicipal;
+  const prestador = resolvePrestador();
+  const xmlObj = {
+    EnviarLoteDpsEnvio: {
+      '@_xmlns': NS_NFSE,
+      '@_xmlns:dsig': NS_DS,
+      LoteDps: {
+        '@_Id': `LOTE${numeroLote}`,
+        '@_versao': VERSAO_SCHEMA_NACIONAL,
+        NumeroLote: String(numeroLote),
+        Prestador: montarPrestadorLote(prestador.documento, prestador.inscricaoMunicipal),
+        QuantidadeDps: listaDps.length,
+        ListaDps: {
+          DPS: listaDps.map((dps) => montarDpsObject(dps, false).DPS),
+        },
+      },
+    },
+  };
 
-  const listaXml = listaDps.map(dps => gerarXmlDps(dps));
-
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<EnviarLoteDpsEnvio xmlns="${NS_NFSE}" versao="1.01">
-  <LoteDps versao="1.01">
-    <NumeroLote>${numeroLote}</NumeroLote>
-    <Prestador>
-      <CpfCnpj>
-        ${cnpjPrestador.length === 14 ? `<Cnpj>${cnpjPrestador}</Cnpj>` : `<Cpf>${cnpjPrestador}</Cpf>`}
-      </CpfCnpj>
-      <InscricaoMunicipal>${inscricaoMunicipal}</InscricaoMunicipal>
-    </Prestador>
-    <QuantidadeDPS>${listaDps.length}</QuantidadeDPS>
-    <ListaDps>
-      ${listaXml.map(xml => `<DPS>${xml}</DPS>`).join('\n')}
-    </ListaDps>
-  </LoteDps>
-</EnviarLoteDpsEnvio>`;
-
-  return xml;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n${builder.build(xmlObj)}`;
 }
 
 function gerarXmlCancelamento(numeroNfse, codigoVerificacao, cnpjPrestador, inscricaoMunicipal, motivo) {
-  const cnpj = cnpjPrestador.replace(/\D/g, '');
-  const codigoMunicipio = config.codigoMunicipioGoiania;
+  const cnpj = onlyDigits(cnpjPrestador);
+  const codigoMunicipio = config.codigoMunicipioNacional || CODIGO_MUNICIPIO_CAMPO_GRANDE;
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<CancelarNfseEnvio xmlns="${NS_NFSE}">
-  <pedRegEvento xmlns="${NS_NFSE}">
+<CancelarNfseEnvio xmlns="${NS_NFSE}" versao="${VERSAO_SCHEMA_NACIONAL}">
+  <pedRegEvento versao="${VERSAO_SCHEMA_NACIONAL}">
     <infPedReg>
       <tpAmb>2</tpAmb>
-      <verAplic>NFSe-GYN-v2</verAplic>
-      <dhEvento>${new Date().toISOString()}</dhEvento>
+      <verAplic>NFSe-Nacional-v2</verAplic>
+      <dhEvento>${formatarDhEmi()}</dhEvento>
       <CNPJAutor>${cnpj}</CNPJAutor>
       <chNFSe>${codigoMunicipio}1${cnpj.padStart(14, '0')}${String(numeroNfse).padStart(13, '0')}${new Date().toISOString().slice(0, 4) + new Date().toISOString().slice(5, 7)}0000000011</chNFSe>
       <e101101>
         <xDesc>Cancelamento de NFS-e</xDesc>
         <cMotivo>${motivo || 1}</cMotivo>
-        <xMotivo>${motivo === 9 ? 'Outros' : 'Erro na Emissão'}</xMotivo>
+        <xMotivo>${motivo === 9 ? 'Outros' : 'Erro na Emissao'}</xMotivo>
       </e101101>
     </infPedReg>
   </pedRegEvento>
@@ -308,214 +555,150 @@ function gerarXmlCancelamento(numeroNfse, codigoVerificacao, cnpjPrestador, insc
 }
 
 function gerarXmlSubstituicao(numeroNfse, codigoVerificacao, novaDps, cnpjPrestador, inscricaoMunicipal, motivo) {
-  const cnpj = cnpjPrestador.replace(/\D/g, '');
-  const codigoMunicipio = config.codigoMunicipioGoiania;
+  const cnpj = onlyDigits(cnpjPrestador);
+  const codigoMunicipio = config.codigoMunicipioNacional || CODIGO_MUNICIPIO_CAMPO_GRANDE;
   const novaDpsXml = gerarXmlDps(novaDps);
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<SubstituirNfseEnvio xmlns="${NS_NFSE}">
-  <SubstituicaoNfse>
-    <NFSe>
-      <InfNfse>
-        <CodigoMunicipio>${codigoMunicipio}</CodigoMunicipio>
-        <NumeroNfse>${numeroNfse}</NumeroNfse>
-        <CodigoVerificacao>${codigoVerificacao}</CodigoVerificacao>
-      </InfNfse>
-    </NFSe>
-  </SubstituicaoNfse>
-  <pedRegEvento xmlns="${NS_NFSE}">
+<SubstituirNfseEnvio xmlns="${NS_NFSE}" versao="${VERSAO_SCHEMA_NACIONAL}">
+  <pedRegEvento versao="${VERSAO_SCHEMA_NACIONAL}">
     <infPedReg>
       <tpAmb>2</tpAmb>
-      <verAplic>NFSe-GYN-v2</verAplic>
-      <dhEvento>${new Date().toISOString()}</dhEvento>
+      <verAplic>NFSe-Nacional-v2</verAplic>
+      <dhEvento>${formatarDhEmi()}</dhEvento>
       <CNPJAutor>${cnpj}</CNPJAutor>
       <chNFSe>${codigoMunicipio}1${cnpj.padStart(14, '0')}${String(numeroNfse).padStart(13, '0')}${new Date().toISOString().slice(0, 4) + new Date().toISOString().slice(5, 7)}0000000011</chNFSe>
       <e105102>
-        <xDesc>Cancelamento de NFS-e por Substituição</xDesc>
+        <xDesc>Cancelamento de NFS-e por Substituicao</xDesc>
         <cMotivo>${motivo || 99}</cMotivo>
-        <xMotivo>Substituição por nova NFS-e</xMotivo>
+        <xMotivo>Substituicao por nova NFS-e</xMotivo>
       </e105102>
     </infPedReg>
   </pedRegEvento>
-  <DPS>
-    ${novaDpsXml}
-  </DPS>
+  ${removerDeclaracaoXml(novaDpsXml)}
 </SubstituirNfseEnvio>`;
 
   return xml;
 }
 
 function gerarXmlConsultaPorDps(numeroDps, serieDps, cnpjPrestador, inscricaoMunicipal) {
-  const cnpj = cnpjPrestador.replace(/\D/g, '');
+  const xmlObj = {
+    ConsultarNfseDpsEnvio: {
+      '@_xmlns': NS_NFSE,
+      IdentificacaoDps: {
+        NumDPS: String(numeroDps),
+        SerieDPS: String(serieDps || SERIE_DPS_SUPORTE),
+      },
+      Prestador: montarPrestadorLote(cnpjPrestador, inscricaoMunicipal),
+    },
+  };
 
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<ConsultarNfseDpsEnvio xmlns="${NS_NFSE}">
-  <IdentificacaoDps>
-    <SerieDPS>${serieDps || '00001'}</SerieDPS>
-    <NumDPS>${numeroDps}</NumDPS>
-  </IdentificacaoDps>
-  <Prestador>
-    <CpfCnpj>
-      ${cnpj.length === 14 ? `<Cnpj>${cnpj}</Cnpj>` : `<Cpf>${cnpj}</Cpf>`}
-    </CpfCnpj>
-    <InscricaoMunicipal>${inscricaoMunicipal}</InscricaoMunicipal>
-  </Prestador>
-</ConsultarNfseDpsEnvio>`;
-
-  return xml;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n${builder.build(xmlObj)}`;
 }
 
 function gerarXmlConsultaPorFaixa(numeroInicial, numeroFinal, pagina, cnpjPrestador, inscricaoMunicipal) {
-  const cnpj = cnpjPrestador.replace(/\D/g, '');
+  const xmlObj = {
+    ConsultarNfseFaixaEnvio: {
+      '@_xmlns': NS_NFSE,
+      Prestador: montarPrestadorLote(cnpjPrestador, inscricaoMunicipal),
+      Faixa: {
+        NumeroNfseInicial: String(numeroInicial),
+        NumeroNfseFinal: String(numeroFinal),
+      },
+      Pagina: String(pagina || 1),
+    },
+  };
 
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<ConsultarNfseFaixaEnvio xmlns="${NS_NFSE}">
-  <Prestador>
-    <CpfCnpj>
-      ${cnpj.length === 14 ? `<Cnpj>${cnpj}</Cnpj>` : `<Cpf>${cnpj}</Cpf>`}
-    </CpfCnpj>
-    <InscricaoMunicipal>${inscricaoMunicipal}</InscricaoMunicipal>
-  </Prestador>
-  <Faixa>
-    <NumeroNfseInicial>${numeroInicial}</NumeroNfseInicial>
-    <NumeroNfseFinal>${numeroFinal}</NumeroNfseFinal>
-  </Faixa>
-  <Pagina>${pagina || 1}</Pagina>
-</ConsultarNfseFaixaEnvio>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n${builder.build(xmlObj)}`;
+}
 
-  return xml;
+function montarPeriodo(dataInicial, dataFinal) {
+  return {
+    DataInicial: dataInicial || formatarData(),
+    DataFinal: dataFinal || dataInicial || formatarData(),
+  };
 }
 
 function gerarXmlConsultaServicosPrestados(dataInicial, dataFinal, cnpjPrestador, inscricaoMunicipal, pagina) {
-  const cnpj = cnpjPrestador.replace(/\D/g, '');
+  const xmlObj = {
+    ConsultarNfseServicoPrestadoEnvio: {
+      '@_xmlns': NS_NFSE,
+      Prestador: montarPrestadorLote(cnpjPrestador, inscricaoMunicipal),
+      PeriodoEmissao: montarPeriodo(dataInicial, dataFinal),
+      Pagina: String(pagina || 1),
+    },
+  };
 
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<ConsultarNfseServicoPrestadoEnvio xmlns="${NS_NFSE}">
-  <Prestador>
-    <CpfCnpj>
-      ${cnpj.length === 14 ? `<Cnpj>${cnpj}</Cnpj>` : `<Cpf>${cnpj}</Cpf>`}
-    </CpfCnpj>
-    <InscricaoMunicipal>${inscricaoMunicipal}</InscricaoMunicipal>
-  </Prestador>
-  ${(dataInicial || dataFinal) ? `
-  <PeriodoEmissao>
-    <DataInicial>${dataInicial}</DataInicial>
-    <DataFinal>${dataFinal}</DataFinal>
-  </PeriodoEmissao>` : ''}
-  <Pagina>${pagina || 1}</Pagina>
-</ConsultarNfseServicoPrestadoEnvio>`;
-
-  return xml;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n${builder.build(xmlObj)}`;
 }
 
 function gerarXmlConsultaServicosTomados(cnpjConsulente, inscricaoMunicipal, dataInicial, dataFinal, pagina) {
-  const cnpj = cnpjConsulente.replace(/\D/g, '');
+  const prestador = montarPrestadorLote(cnpjConsulente, inscricaoMunicipal);
+  const xmlObj = {
+    ConsultarNfseServicoTomadoEnvio: {
+      '@_xmlns': NS_NFSE,
+      Consulente: prestador,
+      PeriodoEmissao: montarPeriodo(dataInicial, dataFinal),
+      Tomador: prestador,
+      Pagina: String(pagina || 1),
+    },
+  };
 
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<ConsultarNfseServicoTomadoEnvio xmlns="${NS_NFSE}">
-  <Consulente>
-    <CpfCnpj>
-      ${cnpj.length === 14 ? `<Cnpj>${cnpj}</Cnpj>` : `<Cpf>${cnpj}</Cpf>`}
-    </CpfCnpj>
-  </Consulente>
-  <Tomador>
-    <CpfCnpj>
-      ${cnpj.length === 14 ? `<Cnpj>${cnpj}</Cnpj>` : `<Cpf>${cnpj}</Cpf>`}
-    </CpfCnpj>
-  </Tomador>
-  ${(dataInicial || dataFinal) ? `
-  <PeriodoEmissao>
-    <DataInicial>${dataInicial}</DataInicial>
-    <DataFinal>${dataFinal}</DataFinal>
-  </PeriodoEmissao>` : ''}
-  <Pagina>${pagina || 1}</Pagina>
-</ConsultarNfseServicoTomadoEnvio>`;
-
-  return xml;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n${builder.build(xmlObj)}`;
 }
 
 function gerarXmlConsultaLote(protocolo, cnpjPrestador, inscricaoMunicipal) {
-  const cnpj = cnpjPrestador.replace(/\D/g, '');
+  const xmlObj = {
+    ConsultarLoteDpsEnvio: {
+      '@_xmlns': NS_NFSE,
+      Prestador: montarPrestadorLote(cnpjPrestador, inscricaoMunicipal),
+      Protocolo: String(protocolo),
+    },
+  };
 
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<ConsultarLoteDpsEnvio xmlns="${NS_NFSE}">
-  <Prestador>
-    <CpfCnpj>
-      ${cnpj.length === 14 ? `<Cnpj>${cnpj}</Cnpj>` : `<Cpf>${cnpj}</Cpf>`}
-    </CpfCnpj>
-    <InscricaoMunicipal>${inscricaoMunicipal}</InscricaoMunicipal>
-  </Prestador>
-  <Protocolo>${protocolo}</Protocolo>
-</ConsultarLoteDpsEnvio>`;
-
-  return xml;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n${builder.build(xmlObj)}`;
 }
 
 function gerarXmlConsultaSituacaoLote(protocolo, cnpjPrestador, inscricaoMunicipal) {
-  const cnpj = cnpjPrestador.replace(/\D/g, '');
-
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<ConsultarSituacaoLoteDpsEnvio xmlns="${NS_NFSE}">
-  <Prestador>
-    <CpfCnpj>
-      ${cnpj.length === 14 ? `<Cnpj>${cnpj}</Cnpj>` : `<Cpf>${cnpj}</Cpf>`}
-    </CpfCnpj>
-    <InscricaoMunicipal>${inscricaoMunicipal}</InscricaoMunicipal>
-  </Prestador>
-  <Protocolo>${protocolo}</Protocolo>
-</ConsultarSituacaoLoteDpsEnvio>`;
-
-  return xml;
+  return gerarXmlConsultaLote(protocolo, cnpjPrestador, inscricaoMunicipal)
+    .replace('ConsultarLoteDpsEnvio', 'ConsultarSituacaoLoteDpsEnvio')
+    .replace('ConsultarLoteDpsEnvio', 'ConsultarSituacaoLoteDpsEnvio');
 }
 
 function gerarXmlConsultaUrlNfse(numeroNfse, cnpjPrestador, inscricaoMunicipal) {
-  const cnpj = cnpjPrestador.replace(/\D/g, '');
+  const xmlObj = {
+    ConsultarUrlNfseEnvio: {
+      '@_xmlns': NS_NFSE,
+      Prestador: montarPrestadorLote(cnpjPrestador, inscricaoMunicipal),
+      NumeroNfse: String(numeroNfse),
+      Pagina: '1',
+    },
+  };
 
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<ConsultarUrlNfseEnvio xmlns="${NS_NFSE}">
-  <Prestador>
-    <CpfCnpj>
-      ${cnpj.length === 14 ? `<Cnpj>${cnpj}</Cnpj>` : `<Cpf>${cnpj}</Cpf>`}
-    </CpfCnpj>
-    <InscricaoMunicipal>${inscricaoMunicipal}</InscricaoMunicipal>
-  </Prestador>
-  <NumeroNfse>${numeroNfse}</NumeroNfse>
-</ConsultarUrlNfseEnvio>`;
-
-  return xml;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n${builder.build(xmlObj)}`;
 }
 
 function gerarXmlConsultaDadosCadastrais(cnpjPrestador, inscricaoMunicipal) {
-  const cnpj = cnpjPrestador.replace(/\D/g, '');
+  const xmlObj = {
+    ConsultarDadosCadastraisEnvio: {
+      '@_xmlns': NS_NFSE,
+      Prestador: montarPrestadorLote(cnpjPrestador, inscricaoMunicipal),
+    },
+  };
 
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<ConsultarDadosCadastraisEnvio xmlns="${NS_NFSE}">
-  <Prestador>
-    <CpfCnpj>
-      ${cnpj.length === 14 ? `<Cnpj>${cnpj}</Cnpj>` : `<Cpf>${cnpj}</Cpf>`}
-    </CpfCnpj>
-    <InscricaoMunicipal>${inscricaoMunicipal}</InscricaoMunicipal>
-  </Prestador>
-</ConsultarDadosCadastraisEnvio>`;
-
-  return xml;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n${builder.build(xmlObj)}`;
 }
 
 function gerarXmlConsultaDpsDisponivel(cnpjPrestador, inscricaoMunicipal, pagina) {
-  const cnpj = cnpjPrestador.replace(/\D/g, '');
+  const xmlObj = {
+    ConsultarDpsDisponivelEnvio: {
+      '@_xmlns': NS_NFSE,
+      Prestador: montarPrestadorLote(cnpjPrestador, inscricaoMunicipal),
+      Pagina: String(pagina || 1),
+    },
+  };
 
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<ConsultarDpsDisponivelEnvio xmlns="${NS_NFSE}">
-  <Prestador>
-    <CpfCnpj>
-      ${cnpj.length === 14 ? `<Cnpj>${cnpj}</Cnpj>` : `<Cpf>${cnpj}</Cpf>`}
-    </CpfCnpj>
-    <InscricaoMunicipal>${inscricaoMunicipal}</InscricaoMunicipal>
-  </Prestador>
-  <Pagina>${pagina || 1}</Pagina>
-</ConsultarDpsDisponivelEnvio>`;
-
-  return xml;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n${builder.build(xmlObj)}`;
 }
 
 module.exports = {

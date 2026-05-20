@@ -60,7 +60,7 @@ async function main() {
       certificateType: 'A1',
       certificateContent: null,
       certificatePassword: null,
-      nfseVersion: process.env.NFSE_VERSION || 'v1',
+      nfseVersion: process.env.NFSE_VERSION || 'v2',
       ambiente: process.env.NFSE_HOMOLOGACAO === 'true' ? 'homologacao' : 'producao',
       features: { emitir_nfse: true, modulo_financeiro: false, modulo_estoque: false },
       apiKeys: {},

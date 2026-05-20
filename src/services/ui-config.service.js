@@ -12,13 +12,13 @@ async function getUiConfig(tenantId) {
 
   if (!settings) {
     return {
-      nfseVersion: 'v1',
+      nfseVersion: 'v2',
       ambiente: 'homologacao',
     };
   }
 
   return {
-    nfseVersion: ALLOWED_VERSIONS.has(settings.nfseVersion) ? settings.nfseVersion : 'v1',
+    nfseVersion: ALLOWED_VERSIONS.has(settings.nfseVersion) ? settings.nfseVersion : 'v2',
     ambiente: ALLOWED_AMBIENTES.has(settings.ambiente) ? settings.ambiente : 'homologacao',
   };
 }

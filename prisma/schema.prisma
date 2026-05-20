@@ -59,7 +59,7 @@ model TenantSettings {
   certificateContent   Bytes?
   certificatePassword  String?
   apiKeys              Json?
-  nfseVersion          String   @default("v1")
+  nfseVersion          String   @default("v2")
   ambiente             String   @default("homologacao")
   certExpiresAt        DateTime?
   features             Json     @default("{}")

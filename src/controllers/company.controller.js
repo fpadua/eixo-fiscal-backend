@@ -202,7 +202,7 @@ async function registrarTenant(req, res) {
       ie: data.ie,
       endereco: data.endereco || {},
       settings: {
-        nfseVersion: 'v1',
+        nfseVersion: 'v2',
         ambiente: 'homologacao',
       },
     });
@@ -298,7 +298,7 @@ async function getTenantInfo(req, res) {
       cnpj: tenant.cnpj,
       inscricaoMunicipal: tenant.inscricaoMunicipal,
       subdomain: tenant.subdomain,
-      nfseVersion: settings?.nfseVersion || 'v1',
+      nfseVersion: settings?.nfseVersion || 'v2',
       ambiente: settings?.ambiente || 'homologacao',
       cidade: tenant.endereco?.cidade || tenant.endereco?.localidade || '',
       endereco: tenant.endereco || {},
