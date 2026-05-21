@@ -31,12 +31,6 @@ const versionConfigs = {
     wsdl: 'https://nfse.issnetonline.com.br/wsnfsenacional/homologacao/nfse.asmx?wsdl',
     namespace: 'http://www.sped.fazenda.gov.br/nfse'
   },
-  // Tentativa com namespace alternativo para NFS-e Nacional
-  v2_alt: {
-    endpoint: 'https://nfse.issnetonline.com.br/wsnfsenacional/homologacao/nfse.asmx',
-    wsdl: 'https://nfse.issnetonline.com.br/wsnfsenacional/homologacao/nfse.asmx?wsdl',
-    namespace: 'http://www.abrasf.org.br/nfse.xsd'
-  }
 };
 
 function _readUiVersion() {
@@ -91,7 +85,7 @@ function getConfig(explicitVersion) {
     },
 
     cert: {
-      path: process.env.CERT_PATH || './certs/certificado.pfx',
+      path: process.env.CERT_PATH || './certs/',
       password: process.env.CERT_PASSWORD || '',
     },
 

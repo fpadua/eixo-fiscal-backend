@@ -149,6 +149,16 @@ function formatarData(value) {
 function resolvePrestador(dados = {}) {
   const informado = dados.prestador || {};
   const configPrestador = config.prestador || {};
+  const documentoInformado = onlyDigits(informado.cnpj || informado.cpf);
+  const documentoConfig = onlyDigits(configPrestador.cnpj || configPrestador.cpf);
+  const inscricaoMunicipalInformada = nonEmpty(informado.inscricaoMunicipal || informado.IM);
+  const inscricaoMunicipalConfig = nonEmpty(configPrestador.inscricaoMunicipal || configPrestador.IM);
+  const temPrestadorExplicito = Boolean(
+    documentoInformado
+      || documentoConfig
+      || inscricaoMunicipalInformada
+      || inscricaoMunicipalConfig
+  );
   const base = {
     ...PRESTADOR_HOMOLOGACAO,
     ...withoutEmptyValues(configPrestador),
@@ -160,8 +170,8 @@ function resolvePrestador(dados = {}) {
     },
   };
 
-  let documento = onlyDigits(base.cnpj || base.cpf);
-  if (config.homologacao && (!documento || (documento.length === 14 && !isValidCnpj(documento)))) {
+  let documento = documentoInformado || documentoConfig;
+  if (config.homologacao && !temPrestadorExplicito) {
     documento = CNPJ_HOMOLOGACAO;
   }
 
@@ -173,7 +183,11 @@ function resolvePrestador(dados = {}) {
     throw new Error('CNPJ do prestador invalido para gerar a DPS nacional.');
   }
 
-  const inscricaoMunicipal = nonEmpty(base.inscricaoMunicipal || base.IM || PRESTADOR_HOMOLOGACAO.inscricaoMunicipal);
+  const inscricaoMunicipal = nonEmpty(
+    inscricaoMunicipalInformada
+      || inscricaoMunicipalConfig
+      || (!temPrestadorExplicito ? PRESTADOR_HOMOLOGACAO.inscricaoMunicipal : undefined)
+  );
   if (!inscricaoMunicipal) {
     throw new Error('Inscricao municipal do prestador e obrigatoria para a DPS nacional.');
   }
@@ -486,7 +500,7 @@ function gerarXmlGerarNfse(dados) {
 }
 
 function gerarXmlEnviarLoteDpsSincrono(listaDps, numeroLote) {
-  const prestador = resolvePrestador();
+  const prestador = resolvePrestador(listaDps[0] || {});
   const xmlObj = {
     EnviarLoteDpsSincronoEnvio: {
       '@_xmlns': NS_NFSE,
@@ -508,7 +522,7 @@ function gerarXmlEnviarLoteDpsSincrono(listaDps, numeroLote) {
 }
 
 function gerarXmlRecepcaoLoteDps(listaDps, numeroLote) {
-  const prestador = resolvePrestador();
+  const prestador = resolvePrestador(listaDps[0] || {});
   const xmlObj = {
     EnviarLoteDpsEnvio: {
       '@_xmlns': NS_NFSE,

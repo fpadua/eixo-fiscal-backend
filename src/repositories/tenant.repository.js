@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const forge = require('node-forge'); // Adicione esta linha para importar a biblioteca
 
 const prisma = require('../lib/prisma');
 
@@ -172,7 +173,6 @@ class TenantSettingsRepository {
       if (settings.certificatePassword) {
         let pwdBuffer;
         if (settings.certificatePassword) {
-          // stored as base64 string, decode it
           const base64Str = typeof settings.certificatePassword === 'string'
             ? settings.certificatePassword
             : settings.certificatePassword.toString();
@@ -192,6 +192,22 @@ class TenantSettingsRepository {
         }
       }
 
+      // Validação da senha do PKCS#12 usando node-forge
+      try {
+        // Tenta decodificar o PKCS#12. Se a senha estiver incorreta, a biblioteca lançará um erro.
+        // Primeiro, converte o Buffer para uma string binária que o forge pode interpretar.
+        const binaryString = decryptedContent.toString('binary');
+        const asn1 = forge.asn1.fromDer(forge.util.createBuffer(binaryString));
+        // Usa a API correta de node-forge para importar PKCS#12.
+        // Se a senha estiver errada, uma exceção será lançada aqui.
+        forge.pkcs12.pkcs12FromAsn1(asn1, false, decryptedPassword);
+        console.log('[CERT] Senha do certificado PKCS#12 validada com sucesso.');
+      } catch (p12Error) {
+        console.error('[CERT] Erro na validação da senha do PKCS#12:', p12Error.message);
+        // Lança um erro específico para que o chamador possa tratá-lo
+        throw new Error('Senha do certificado PKCS#12 inválida.');
+      }
+
       return {
         certificateContent: decryptedContent,
         certificatePassword: decryptedPassword,
@@ -199,22 +215,9 @@ class TenantSettingsRepository {
       };
     } catch (error) {
       console.error('[TenantSettings] Erro ao descriptografar certificado:', error);
-      return null;
+      // Propaga o erro para que o nfsecontroller possa capturá-lo
+      throw error; // Importante para que o erro seja tratado no controller
     }
-  }
-
-  async saveGeneratedXml(xmlBuffer, filename) {
-    const path = require('path');
-    const fs = require('fs');
-    const storageDir = path.resolve(__dirname, '..', '..', 'storage', 'xml');
-    if (!fs.existsSync(storageDir)) {
-      fs.mkdirSync(storageDir, { recursive: true });
-    }
-    const timestamp = Date.now();
-    const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const filePath = path.join(storageDir, `${this.tenantId}_${timestamp}_${safeName}`);
-    fs.writeFileSync(filePath, xmlBuffer);
-    return filePath;
   }
 
   async saveGeneratedXml(xmlBuffer, filename) {

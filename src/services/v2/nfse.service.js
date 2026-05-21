@@ -3,23 +3,36 @@ const xmlService = require('./xml.service');
 const signService = require('../sign.service');
 const soapService = require('../soap.service');
 const config = require('../../config/nfse.config');
+const fs = require('fs');
+const path = require('path');
 
-const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
+const parser = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: '@_',
+  parseTagValue: false,
+});
+const XML_STORAGE_DIR = path.resolve('D:/Home/app-nfs/backend/storage/xml');
 
 function _parsearResposta(soapXml) {
   try {
+    if (!soapXml || typeof soapXml !== 'string') {
+      return { sucesso: false, erro: 'Resposta SOAP vazia ou invalida', xmlResposta: soapXml };
+    }
+
     // Verifica se é resposta mock (sem envelope SOAP)
-    if (!soapXml.includes('<soap:Envelope') && !soapXml.includes('<soapenv:Envelope') && !soapXml.includes('<Envelope')) {
+    if (!/<(?:\w+:)?Envelope\b/.test(soapXml)) {
       // É resposta direta (mock) - parseia diretamente
       try {
         const dados = parser.parse(soapXml);
+        const mensagensRetorno = _extrairMensagensRetorno(dados);
         return {
-          sucesso: true,
+          sucesso: mensagensRetorno.length === 0,
           dados: dados,
           xmlResposta: soapXml,
           numeroNota: _extrairNumeroNota(dados),
           codigoVerificacao: _extrairCodigoVerificacao(dados),
           listaNfse: _extrairListaNfse(dados),
+          mensagensRetorno,
         };
       } catch (e) {
         return { sucesso: true, dados: {}, xmlResposta: soapXml };
@@ -28,14 +41,14 @@ function _parsearResposta(soapXml) {
 
     const parsed = parser.parse(soapXml);
 
-    const envelope = parsed['soap:Envelope'] || parsed['soapenv:Envelope'] || parsed['Envelope'];
-    const body = envelope?.['soap:Body'] || envelope?.['soapenv:Body'] || envelope?.['Body'];
+    const envelope = _getByLocalName(parsed, 'Envelope') || parsed;
+    const body = _getByLocalName(envelope, 'Body') || envelope;
 
     if (!body) {
       return { sucesso: false, erro: 'Resposta SOAP inválida', xmlResposta: soapXml };
     }
 
-    const fault = body['soap:Fault'] || body['Fault'];
+    const fault = _getByLocalName(body, 'Fault');
     if (fault) {
       return {
         sucesso: false,
@@ -67,13 +80,20 @@ function _parsearResposta(soapXml) {
       dadosNota = resposta || body;
     }
 
+    let mensagensRetorno = _extrairMensagensRetorno(dadosNota);
+    const mensagensXml = _extrairMensagensRetornoDoXml(soapXml);
+    if (mensagensXml.length > 0 && (mensagensRetorno.length === 0 || mensagensRetorno.some(msg => !msg.Codigo))) {
+      mensagensRetorno = mensagensXml;
+    }
+
     return {
-      sucesso: true,
+      sucesso: mensagensRetorno.length === 0,
       dados: dadosNota,
-      xmlResposta: xmlResp,
+      xmlResposta: soapXml,
       numeroNota: _extrairNumeroNota(dadosNota),
       codigoVerificacao: _extrairCodigoVerificacao(dadosNota),
       listaNfse: _extrairListaNfse(dadosNota),
+      mensagensRetorno,
     };
   } catch (err) {
     return { sucesso: false, erro: `Erro ao parsear resposta: ${err.message}`, xmlResposta: soapXml };
@@ -85,6 +105,117 @@ function _extrairPrimeiroValor(obj) {
   const keys = Object.keys(obj);
   if (keys.length === 0) return null;
   return obj[keys[0]];
+}
+
+function _getByLocalName(obj, localName) {
+  if (!obj || typeof obj !== 'object') return null;
+  const key = Object.keys(obj).find(k => k === localName || k.endsWith(`:${localName}`));
+  return key ? obj[key] : null;
+}
+
+function _findByLocalName(obj, localName) {
+  if (!obj || typeof obj !== 'object') return null;
+
+  const direct = _getByLocalName(obj, localName);
+  if (direct) return direct;
+
+  for (const value of Object.values(obj)) {
+    if (value && typeof value === 'object') {
+      const found = _findByLocalName(value, localName);
+      if (found) return found;
+    }
+  }
+
+  return null;
+}
+
+function _asArray(value) {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function _toText(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'object') return value['#text'] || value._text || JSON.stringify(value);
+  return String(value);
+}
+
+function _extrairMensagensRetorno(dados) {
+  const lista = _findByLocalName(dados, 'ListaMensagemRetorno')
+    || _findByLocalName(dados, 'ListaMensagemRetornoLote')
+    || _findByLocalName(dados, 'ListaMensagemAlertaRetorno');
+
+  const mensagens = _getByLocalName(lista, 'MensagemRetorno');
+
+  return _asArray(mensagens).map(mensagem => ({
+    Codigo: _toText(_getByLocalName(mensagem, 'Codigo')),
+    Mensagem: _toText(_getByLocalName(mensagem, 'Mensagem')),
+    Correcao: _toText(_getByLocalName(mensagem, 'Correcao')),
+  }));
+}
+
+function _extrairMensagensRetornoDoXml(xml) {
+  if (!xml || typeof xml !== 'string') return [];
+
+  const mensagens = [];
+  const blocos = xml.matchAll(/<MensagemRetorno>([\s\S]*?)<\/MensagemRetorno>/g);
+
+  for (const bloco of blocos) {
+    const conteudo = bloco[1];
+    const textoTag = (tag) => {
+      const match = conteudo.match(new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`));
+      return match ? match[1].trim() : null;
+    };
+
+    mensagens.push({
+      Codigo: textoTag('Codigo'),
+      Mensagem: textoTag('Mensagem'),
+      Correcao: textoTag('Correcao'),
+    });
+  }
+
+  return mensagens;
+}
+
+function _salvarXml(nomeArquivo, conteudo) {
+  if (!conteudo) return null;
+  if (!fs.existsSync(XML_STORAGE_DIR)) fs.mkdirSync(XML_STORAGE_DIR, { recursive: true });
+
+  const filePath = path.join(XML_STORAGE_DIR, nomeArquivo);
+  fs.writeFileSync(filePath, conteudo, 'utf8');
+  return filePath;
+}
+
+function _anexarXmlAuditoria(resultado, xmlEnviado, xmlResposta, operacao) {
+  const soapAudit = soapService.getLastSoapAudit?.();
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = (now.getMonth() + 1).toString().padStart(2, '0'); // Mês é base 0
+  const day = now.getDate().toString().padStart(2, '0');
+  const hours = now.getHours().toString().padStart(2, '0');
+  const minutes = now.getMinutes().toString().padStart(2, '0');
+  const seconds = now.getSeconds().toString().padStart(2, '0');
+  const milliseconds = now.getMilliseconds().toString().padStart(3, '0');
+
+  const formattedDate = `${year}${month}${day}T${hours}${minutes}${seconds}${milliseconds}`;
+
+  if (xmlEnviado) {
+    const envioFileName = `${formattedDate}_${operacao}_envio.xml`;
+    resultado.xmlEnviado = xmlEnviado;
+    resultado.xmlEnviadoPath = _salvarXml(envioFileName, xmlEnviado);
+  }
+
+  if (xmlResposta) {
+    const respostaFileName = `${formattedDate}_${operacao}_resposta.xml`;
+    resultado.xmlResposta = xmlResposta;
+    resultado.xmlRespostaPath = _salvarXml(respostaFileName, xmlResposta);
+  }
+
+  resultado.modeMock = config.isMock;
+  if (soapAudit?.soapEnvelopePath) resultado.soapEnvelopePath = soapAudit.soapEnvelopePath;
+  if (soapAudit?.soapEnvelope) resultado.soapEnvelope = soapAudit.soapEnvelope;
+  if (soapAudit?.soapAction) resultado.soapAction = soapAudit.soapAction;
+  return resultado;
 }
 
 function _extrairNumeroNota(dados) {
@@ -148,16 +279,13 @@ async function gerarNfse(dados, pfxBuffer, password) {
     : xml;
 
   const respostaSoap = await soapService.enviarSoap('GerarNfse', xmlAssinado, pfxBuffer, password);
-  console.log(respostaSoap)
   const resultado = _parsearResposta(respostaSoap);
 
   if (resultado.numeroNota && resultado.codigoVerificacao) {
     resultado.urlImpressao = _montarUrlImpressao(resultado.numeroNota, resultado.codigoVerificacao);
   }
 
-  resultado.xmlEnviado = xmlAssinado;
-  resultado.modeMock = config.isMock;
-  return resultado;
+  return _anexarXmlAuditoria(resultado, xmlAssinado, respostaSoap, 'nfse');
 }
 
 async function enviarLoteDpsSincrono(listaDps, numeroLote, pfxBuffer, password) {
@@ -172,9 +300,7 @@ async function enviarLoteDpsSincrono(listaDps, numeroLote, pfxBuffer, password) 
     resultado.urlImpressao = _montarUrlImpressao(primeira.Nfse?.InfNfse?.nNFSe, primeira.Nfse?.InfNfse?.CodigoVerificacao);
   }
 
-  resultado.xmlEnviado = xmlAssinado;
-  resultado.modeMock = config.isMock;
-  return resultado;
+  return _anexarXmlAuditoria(resultado, xmlAssinado, respostaSoap, 'lote_dps_sincrono');
 }
 
 async function recepcionarLoteDps(listaDps, numeroLote, pfxBuffer, password) {
@@ -184,9 +310,7 @@ async function recepcionarLoteDps(listaDps, numeroLote, pfxBuffer, password) {
   const respostaSoap = await soapService.enviarSoap('RecepcionarLoteDps', xmlAssinado, pfxBuffer, password);
   const resultado = _parsearResposta(respostaSoap);
 
-  resultado.xmlEnviado = xmlAssinado;
-  resultado.modeMock = config.isMock;
-  return resultado;
+  return _anexarXmlAuditoria(resultado, xmlAssinado, respostaSoap, 'lote_dps');
 }
 
 async function consultarLoteDps(protocolo) {
@@ -232,8 +356,7 @@ async function cancelarNfse(numeroNota, codigoVerificacao, motivo, pfxBuffer, pa
   const xmlAssinado = await _assinarXml(xml, `cancel:${numeroNota}`, pfxBuffer, password);
   const respostaSoap = await soapService.enviarSoap('CancelarNfse', xmlAssinado, pfxBuffer, password);
   const resultado = _parsearResposta(respostaSoap);
-  resultado.xmlEnviado = xmlAssinado;
-  return resultado;
+  return _anexarXmlAuditoria(resultado, xmlAssinado, respostaSoap, 'cancelamento');
 }
 
 async function substituirNfse(numeroNota, codigoVerificacao, novaDps, motivo, pfxBuffer, password) {
@@ -241,8 +364,7 @@ async function substituirNfse(numeroNota, codigoVerificacao, novaDps, motivo, pf
   const xmlAssinado = await _assinarXml(xml, `subst:${numeroNota}`, pfxBuffer, password);
   const respostaSoap = await soapService.enviarSoap('SubstituirNfse', xmlAssinado, pfxBuffer, password);
   const resultado = _parsearResposta(respostaSoap);
-  resultado.xmlEnviado = xmlAssinado;
-  return resultado;
+  return _anexarXmlAuditoria(resultado, xmlAssinado, respostaSoap, 'substituicao');
 }
 
 async function consultarUrlNfse(numeroNfse) {

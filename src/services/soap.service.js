@@ -2,11 +2,25 @@ const axios = require('axios');
 const forge = require('node-forge');
 const https = require('https');
 const fs = require('fs');
+const path = require('path');
 const config = require('../config/nfse.config');
 
 const soapActionNamespace = config.version === 'v1'
   ? 'http://nfse.abrasf.org.br'
   : 'http://www.sped.fazenda.gov.br/nfse';
+const XML_STORAGE_DIR = path.resolve('D:/Home/app-nfs/backend/storage/xml');
+const NFSE_V2_VERSAO_DADOS = process.env.NFSE_V2_VERSAO_DADOS || '1.01';
+const NFSE_V2_CABECALHO_XMLNS = process.env.NFSE_V2_CABECALHO_XMLNS || 'http://www.sped.fazenda.gov.br/nfse';
+let lastSoapAudit = null;
+
+function _salvarXmlAuditoria(nomeArquivo, conteudo) {
+  if (!conteudo) return null;
+  if (!fs.existsSync(XML_STORAGE_DIR)) fs.mkdirSync(XML_STORAGE_DIR, { recursive: true });
+
+  const filePath = path.join(XML_STORAGE_DIR, nomeArquivo);
+  fs.writeFileSync(filePath, conteudo, 'utf8');
+  return filePath;
+}
 
 /**
  * Extrai corretamente o certificado TITULAR do .pfx
@@ -17,10 +31,19 @@ function _getHttpsAgent() {
   const options = {
     keepAlive: true,
     timeout: 60000,
-    rejectUnauthorized: true,
+    rejectUnauthorized: false,
   };
 
   if (!config.cert?.path || !fs.existsSync(config.cert.path)) {
+    // Se o caminho não existir, aborta sem tentar renomear
+    return new https.Agent(options);
+  }
+
+  // Verifica se o diretório pai contém apenas dígitos (CNPJ ou CPF) e tem comprimento 11 ou 14
+  const certDir = require('path').dirname(config.cert.path);
+  const folderName = require('path').basename(certDir);
+  if (!/^(\d{11}|\d{14})$/.test(folderName)) {
+    console.warn('[SOAP] Diretório do certificado não corresponde a CNPJ/CPF; usando agente padrão sem certificado');
     return new https.Agent(options);
   }
 
@@ -92,7 +115,7 @@ function _getHttpsAgentWithCert(pfxBuffer, password) {
   const options = {
     keepAlive: true,
     timeout: 60000,
-    rejectUnauthorized: true,
+    rejectUnauthorized: false,
   };
 
   try {
@@ -170,15 +193,24 @@ function _montarEnvelope(operacao, xmlConteudo) {
   const nsOperacao = config.namespace;
 
   // Versão dos dados conforme a versão da NFSe (schema v101 exige exatamente "1.01")
-  const versaoDados = config.version === 'v1' ? '2.04' : '1.01';
-  const versaoCabecalho = config.version === 'v1' ? '2.04' : '1.01';
-  // Para v2, o cabeçalho sem namespace (schema_v101 não exige)
+  const versaoDados = config.version === 'v1' ? '2.04' : NFSE_V2_VERSAO_DADOS;
+  const versaoCabecalho = config.version === 'v1' ? '2.04' : NFSE_V2_VERSAO_DADOS;
+  const xmlnsCabecalho = NFSE_V2_CABECALHO_XMLNS
+    ? ` xmlns="${NFSE_V2_CABECALHO_XMLNS}"`
+    : '';
   const xmlCabecalho = config.version === 'v1'
     ? `<cabecalho versao="2.04"><versaoDados>${versaoDados}</versaoDados></cabecalho>`
-    : `<cabecalho versao="${versaoCabecalho}"><versaoDados>${versaoDados}</versaoDados></cabecalho>`;
+    : `<cabecalho versao="${versaoCabecalho}"${xmlnsCabecalho}><versaoDados>${versaoDados}</versaoDados></cabecalho>`;
 
   // ESTA LINHA DEVE SER UMA ÚNICA LINHA, SEM QUEBRAS OU INDENTAÇÃO
-  return `<?xml version="1.0" encoding="UTF-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Header/><soap:Body><${operacao} xmlns="${nsOperacao}"><nfseCabecMsg><![CDATA[${xmlCabecalho}]]></nfseCabecMsg><nfseDadosMsg><![CDATA[${xmlLimpo}]]></nfseDadosMsg></${operacao}></soap:Body></soap:Envelope>`;
+  const wrapperName = operacao;
+  const paramNamespace = config.version === 'v1' ? '' : ' xmlns=""';
+
+  if (config.version === 'v2') {
+    return `<?xml version="1.0" encoding="UTF-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:nfse="${nsOperacao}"><soap:Header/><soap:Body><nfse:${wrapperName}><nfseCabecMsg>${xmlCabecalho}</nfseCabecMsg><nfseDadosMsg>${xmlLimpo}</nfseDadosMsg></nfse:${wrapperName}></soap:Body></soap:Envelope>`;
+  }
+
+  return `<?xml version="1.0" encoding="UTF-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Header/><soap:Body><${wrapperName} xmlns="${nsOperacao}"><nfseCabecMsg${paramNamespace}><![CDATA[${xmlCabecalho}]]></nfseCabecMsg><nfseDadosMsg${paramNamespace}><![CDATA[${xmlLimpo}]]></nfseDadosMsg></${wrapperName}></soap:Body></soap:Envelope>`;
 }
 
 // Mapeamento: nome interno → método SOAP real no WSDL
@@ -199,6 +231,9 @@ async function enviarSoap(operacao, xmlConteudo, pfxBuffer, password) {
   const metodo = METODOS_SOAP[operacao] || operacao;
   const endpoint = config.endpoint;
   const envelope = _montarEnvelope(metodo, xmlConteudo);
+  const soapAction = `${soapActionNamespace}/${metodo}`;
+  const soapEnvelopePath = _salvarXmlAuditoria(`${Date.now()}_${metodo}_soap_envelope.xml`, envelope);
+  lastSoapAudit = { soapEnvelopePath, soapEnvelope: envelope, endpoint, soapAction };
 
   if (config.isMock) {
     console.log(`[MOCK] Operação: ${operacao}`);
@@ -207,6 +242,7 @@ async function enviarSoap(operacao, xmlConteudo, pfxBuffer, password) {
 
   console.log(`[SOAP] Enviando ${operacao} → método ${metodo}`);
   console.log('[SOAP] Envelope (500 chars):', envelope.substring(0, 500));
+  console.log('[SOAP] Envelope salvo em:', soapEnvelopePath);
 
   try {
     const httpsAgent = pfxBuffer
@@ -216,7 +252,7 @@ async function enviarSoap(operacao, xmlConteudo, pfxBuffer, password) {
     const response = await axios.post(endpoint, envelope, {
       headers: {
         'Content-Type': 'text/xml; charset=UTF-8',
-        'SOAPAction': `"${soapActionNamespace}/${metodo}"`,
+        'SOAPAction': `"${soapAction}"`,
       },
       timeout: 60000,
       httpsAgent,
@@ -224,19 +260,32 @@ async function enviarSoap(operacao, xmlConteudo, pfxBuffer, password) {
     });
 
     console.log(`[SOAP] Status HTTP: ${response.status}`);
+    lastSoapAudit = { ...lastSoapAudit, status: response.status };
 
     if (response.status >= 400) {
-      throw new Error(
-        `Erro do WebService (${response.status}): ${String(response.data).substring(0, 300)}`
-      );
+      lastSoapAudit = { ...lastSoapAudit, responseData: response.data };
+      if (typeof response.data === 'string' && response.data.trim().startsWith('<')) {
+        return response.data;
+      }
+
+      const error = new Error(`Erro do WebService (${response.status}): ${String(response.data)}`);
+      error.status = response.status;
+      error.responseData = response.data;
+      throw error;
     }
 
     return response.data;
   } catch (error) {
     if (error.response) {
-      throw new Error(
-        `Erro do WebService (${error.response.status}): ${String(error.response.data).substring(0, 300)}`
-      );
+      lastSoapAudit = { ...lastSoapAudit, status: error.response.status, responseData: error.response.data };
+      if (typeof error.response.data === 'string' && error.response.data.trim().startsWith('<')) {
+        return error.response.data;
+      }
+
+      const wrapped = new Error(`Erro do WebService (${error.response.status}): ${String(error.response.data)}`);
+      wrapped.status = error.response.status;
+      wrapped.responseData = error.response.data;
+      throw wrapped;
     }
     throw error;
   }
@@ -313,4 +362,8 @@ async function testarConexao() {
   }
 }
 
-module.exports = { enviarSoap, testarConexao };
+function getLastSoapAudit() {
+  return lastSoapAudit;
+}
+
+module.exports = { enviarSoap, testarConexao, getLastSoapAudit };
