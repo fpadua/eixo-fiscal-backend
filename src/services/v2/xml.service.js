@@ -305,14 +305,14 @@ function montarIbsCbs(dados = {}) {
     finNFSe: String(origem.finNFSe ?? dados.finNFSe ?? 0),
     cIndOp: sanitizeFixedDigits(origem.cIndOp ?? dados.cIndOp, 6, '000001'),
     indDest: String(origem.indDest ?? dados.indDest ?? 0),
-    valores: gIBSCBS.CST || gIBSCBS.cClassTrib ? {
+    valores: {
       trib: {
         gIBSCBS: {
           CST: sanitizeFixedDigits(gIBSCBS.CST ?? dados.CST, 3, '000'),
           cClassTrib: sanitizeFixedDigits(gIBSCBS.cClassTrib ?? dados.cClassTrib, 6, '000000'),
         },
       },
-    } : {},
+    },
   };
 }
 
@@ -410,13 +410,11 @@ function montarDpsObject(dados, includeNamespace = false) {
 
   valores.trib = trib;
 
-  console.log('================ dados ================', JSON.stringify(dados, null, 2));
-
   const infDPS = {
     '@_Id': idDps,
     tpAmb: String(dados.tpAmb || config.tpAmb || 2),
     dhEmi: formatarDhEmi(dados.dhEmi || dados.rps?.dataEmissao),
-    verAplic: String(dados.verAplic),
+    verAplic: String(VERSAO_SCHEMA_NACIONAL),
     serie: serieDps,
     nDPS: numeroDps,
     dCompet: formatarData(dados.dCompet || dados.rps?.competencia || dados.rps?.dataEmissao),
@@ -436,8 +434,6 @@ function montarDpsObject(dados, includeNamespace = false) {
       return p;
     })(),
   };
-
-  console.log('================ infDPS prest ================', JSON.stringify(infDPS.prest, null, 2));
 
   const tomador = montarPessoaTomador(dados.tomador, codigoMunicipio);
   if (tomador) infDPS.toma = tomador;
