@@ -195,9 +195,8 @@ function _anexarXmlAuditoria(resultado, xmlEnviado, xmlResposta, operacao) {
   const hours = now.getHours().toString().padStart(2, '0');
   const minutes = now.getMinutes().toString().padStart(2, '0');
   const seconds = now.getSeconds().toString().padStart(2, '0');
-  const milliseconds = now.getMilliseconds().toString().padStart(3, '0');
 
-  const formattedDate = `${year}${month}${day}T${hours}${minutes}${seconds}${milliseconds}`;
+  const formattedDate = `${year}${month}${day}T${hours}${minutes}${seconds}`;
 
   if (xmlEnviado) {
     const envioFileName = `${formattedDate}_${operacao}_envio.xml`;

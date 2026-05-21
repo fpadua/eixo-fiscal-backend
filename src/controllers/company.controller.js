@@ -309,6 +309,7 @@ async function getTenantInfo(req, res) {
       nomeFantasia: tenant.nomeFantasia,
       cnpj: tenant.cnpj,
       inscricaoMunicipal: tenant.inscricaoMunicipal,
+      ie: tenant.ie,
       subdomain: tenant.subdomain,
       nfseVersion: settings?.nfseVersion || 'v2',
       ambiente: settings?.ambiente || 'homologacao',

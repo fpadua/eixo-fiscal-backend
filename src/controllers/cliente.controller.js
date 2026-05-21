@@ -12,6 +12,7 @@ const clienteSchema = z.object({
     numero: z.string(),
     complemento: z.string().optional(),
     bairro: z.string(),
+    localidade: z.string().optional(),
     codigoMunicipio: z.string().optional(),
     uf: z.string().length(2).default('GO'),
     cep: z.string(),

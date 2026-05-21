@@ -205,7 +205,7 @@ function resolvePrestador(dados = {}) {
 
 function montarEndereco(endereco = {}, codigoMunicipio) {
   const logradouro = nonEmpty(endereco.logradouro || endereco.xLgr);
-  const numero = nonEmpty(endereco.numero || endereco.nro || 'S/N');
+  const numero = nonEmpty(endereco.numero || endereco.nro);
   const bairro = nonEmpty(endereco.bairro || endereco.xBairro);
   const cep = onlyDigits(endereco.cep || endereco.CEP);
   const municipio = onlyDigits(endereco.codigoMunicipio || endereco.cMun || codigoMunicipio);
@@ -303,16 +303,16 @@ function montarIbsCbs(dados = {}) {
 
   return {
     finNFSe: String(origem.finNFSe ?? dados.finNFSe ?? 0),
-    cIndOp: sanitizeFixedDigits(origem.cIndOp ?? dados.cIndOp, 6, '000000'),
+    cIndOp: sanitizeFixedDigits(origem.cIndOp ?? dados.cIndOp, 6, '000001'),
     indDest: String(origem.indDest ?? dados.indDest ?? 0),
-    valores: {
+    valores: gIBSCBS.CST || gIBSCBS.cClassTrib ? {
       trib: {
         gIBSCBS: {
           CST: sanitizeFixedDigits(gIBSCBS.CST ?? dados.CST, 3, '000'),
           cClassTrib: sanitizeFixedDigits(gIBSCBS.cClassTrib ?? dados.cClassTrib, 6, '000000'),
         },
       },
-    },
+    } : {},
   };
 }
 
@@ -410,23 +410,34 @@ function montarDpsObject(dados, includeNamespace = false) {
 
   valores.trib = trib;
 
+  console.log('================ dados ================', JSON.stringify(dados, null, 2));
+
   const infDPS = {
     '@_Id': idDps,
     tpAmb: String(dados.tpAmb || config.tpAmb || 2),
     dhEmi: formatarDhEmi(dados.dhEmi || dados.rps?.dataEmissao),
-    verAplic: String(dados.verAplic || 'NFSe-Nacional-v2').slice(0, 20),
+    verAplic: String(dados.verAplic),
     serie: serieDps,
     nDPS: numeroDps,
     dCompet: formatarData(dados.dCompet || dados.rps?.competencia || dados.rps?.dataEmissao),
     tpEmit: String(dados.tpEmit || 1),
     cLocEmi: codigoMunicipio,
-    prest: montarPrestador({
-      ...prestador,
-      opSimpNac: dados.optanteSimplesNacional ? 3 : 1,
-      regApTribSN: dados.regApTribSN || dados.regimeApuracao,
-      regEspTrib: dados.regEspTrib ?? dados.regimeEspecialTributacao,
-    }, codigoMunicipio),
+    prest: (() => {
+      const p = montarPrestador({
+        ...prestador,
+        opSimpNac: dados.optanteSimplesNacional ? 3 : 1,
+        regApTribSN: dados.regApTribSN || dados.regimeApuracao,
+        regEspTrib: dados.regEspTrib ?? dados.regimeEspecialTributacao,
+      }, codigoMunicipio);
+      if (String(dados.tpEmit || 1) === '1') {
+        delete p.xNome;
+        delete p.end;
+      }
+      return p;
+    })(),
   };
+
+  console.log('================ infDPS prest ================', JSON.stringify(infDPS.prest, null, 2));
 
   const tomador = montarPessoaTomador(dados.tomador, codigoMunicipio);
   if (tomador) infDPS.toma = tomador;
