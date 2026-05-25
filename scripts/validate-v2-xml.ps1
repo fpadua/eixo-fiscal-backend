@@ -11,12 +11,16 @@ $resolvedDsig = (Resolve-Path $DsigSchemaPath).Path
 $schemas = New-Object System.Xml.Schema.XmlSchemaSet
 
 $schemaSettings = New-Object System.Xml.XmlReaderSettings
-$schemaSettings.DtdProcessing = [System.Xml.DtdProcessing]::Parse
-$schemaSettings.XmlResolver = New-Object System.Xml.XmlUrlResolver
+$schemaSettings.DtdProcessing = [System.Xml.DtdProcessing]::Ignore
+$schemaSettings.XmlResolver = $null
 
-$dsigReader = [System.Xml.XmlReader]::Create($resolvedDsig, $schemaSettings)
+$dsigContent = Get-Content -Raw $resolvedDsig
+$dsigContent = [regex]::Replace($dsigContent, '(?s)<!DOCTYPE\s+schema.*?\]>', '')
+$dsigStringReader = New-Object System.IO.StringReader($dsigContent)
+$dsigReader = [System.Xml.XmlReader]::Create($dsigStringReader, $schemaSettings)
 [void]$schemas.Add("http://www.w3.org/2000/09/xmldsig#", $dsigReader)
 $dsigReader.Close()
+$dsigStringReader.Close()
 
 [void]$schemas.Add("http://www.sped.fazenda.gov.br/nfse", $resolvedSchema)
 $schemas.Compile()

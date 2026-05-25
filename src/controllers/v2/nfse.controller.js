@@ -1,6 +1,7 @@
 const nfseService = require('../../services/v2/nfse.service');
 const config = require('../../config/nfse.config');
 const { TenantSettingsRepository } = require('../../repositories/tenant.repository');
+const taxTables = require('../../services/v2/tax-tables.service');
 
 function nonEmpty(value) {
   const text = String(value ?? '').trim();
@@ -82,6 +83,28 @@ function withTenantPrestadorList(listaDps = [], tenant) {
   return listaDps.map((dps) => withTenantPrestador(dps, tenant));
 }
 
+function getPrestadorConsulta(req) {
+  const prestador = prestadorFromTenant(req.tenant);
+  return {
+    documento: prestador.cnpj || prestador.cpf || config.prestador.cnpj || config.prestador.cpf,
+    inscricaoMunicipal: prestador.inscricaoMunicipal || prestador.IM || config.prestador.inscricaoMunicipal || config.prestador.IM,
+  };
+}
+
+function responderErro(res, err) {
+  if (err.code === 'VALIDACAO_DPS_V2') {
+    return res.status(422).json({
+      sucesso: false,
+      erro: err.message,
+      mensagensRetorno: err.mensagensRetorno || [],
+    });
+  }
+  if (err.message.includes('Falha ao carregar certificado') || err.message.includes('Senha do certificado')) {
+    return res.status(401).json({ sucesso: false, erro: `Erro de certificado: ${err.message}` });
+  }
+  return res.status(500).json({ sucesso: false, erro: err.message });
+}
+
 async function loadCert(tenantId) {
   if (config.isMock) return { pfxBuffer: null, password: null };
   try {
@@ -107,11 +130,18 @@ async function gerarNfse(req, res) {
     const resultado = await nfseService.gerarNfse(dados, pfxBuffer, password);
     res.json(resultado);
   } catch (err) {
+    if (err.code === 'VALIDACAO_DPS_V2') {
+      return res.status(422).json({
+        sucesso: false,
+        erro: err.message,
+        mensagensRetorno: err.mensagensRetorno || [],
+      });
+    }
     // Aqui você pode diferenciar o erro de certificado
     if (err.message.includes('Falha ao carregar certificado') || err.message.includes('Senha do certificado PKCS#12 inválida')) {
       return res.status(401).json({ sucesso: false, erro: `Erro de certificado: ${err.message}` });
     }
-    res.status(500).json({ sucesso: false, erro: err.message });
+    return responderErro(res, err);
   }
 }
 
@@ -134,7 +164,7 @@ async function enviarLoteDpsSincrono(req, res) {
     if (err.message.includes('Falha ao carregar certificado') || err.message.includes('Senha do certificado PKCS#12 inválida')) {
       return res.status(401).json({ sucesso: false, erro: `Erro de certificado: ${err.message}` });
     }
-    res.status(500).json({ sucesso: false, erro: err.message });
+    return responderErro(res, err);
   }
 }
 
@@ -157,145 +187,170 @@ async function recepcionarLoteDps(req, res) {
     if (err.message.includes('Falha ao carregar certificado') || err.message.includes('Senha do certificado PKCS#12 inválida')) {
       return res.status(401).json({ sucesso: false, erro: `Erro de certificado: ${err.message}` });
     }
-    res.status(500).json({ sucesso: false, erro: err.message });
+    return responderErro(res, err);
   }
 }
 
 async function consultarLoteDps(req, res) {
   try {
     const { protocolo } = req.params;
-    const resultado = await nfseService.consultarLoteDps(protocolo);
+    const prestador = getPrestadorConsulta(req);
+    const resultado = await nfseService.consultarLoteDps(protocolo, prestador.documento, prestador.inscricaoMunicipal);
     res.json(resultado);
   } catch (err) {
-    res.status(500).json({ sucesso: false, erro: err.message });
+    return responderErro(res, err);
   }
 }
 
 async function consultarSituacaoLote(req, res) {
   try {
     const { protocolo } = req.params;
-    const resultado = await nfseService.consultarSituacaoLote(protocolo);
+    const prestador = getPrestadorConsulta(req);
+    const resultado = await nfseService.consultarSituacaoLote(protocolo, prestador.documento, prestador.inscricaoMunicipal);
     res.json(resultado);
   } catch (err) {
-    res.status(500).json({ sucesso: false, erro: err.message });
+    return responderErro(res, err);
   }
 }
 
 async function consultarNfsePorDps(req, res) {
   try {
-    const { numero, serie } = req.params;
+    const { numero } = req.params;
+    const { serie } = req.query;
     const tenantId = req.tenantId || 'default-tenant-id';
     const { pfxBuffer, password } = await loadCert(tenantId);
     if (!pfxBuffer || !password) {
       return res.status(400).json({ sucesso: false, erro: 'Certificado ou senha não fornecidos/válidos.' });
     }
-    const resultado = await nfseService.consultarNfsePorDps(numero, serie || '00001', pfxBuffer, password);
+    const prestador = getPrestadorConsulta(req);
+    const resultado = await nfseService.consultarNfsePorDps(numero, serie || '1', pfxBuffer, password, prestador.documento, prestador.inscricaoMunicipal);
     res.json(resultado);
   } catch (err) {
     if (err.message.includes('Falha ao carregar certificado') || err.message.includes('Senha do certificado PKCS#12 inválida')) {
       return res.status(401).json({ sucesso: false, erro: `Erro de certificado: ${err.message}` });
     }
-    res.status(500).json({ sucesso: false, erro: err.message });
+    return responderErro(res, err);
   }
 }
 
 async function consultarNfsePorFaixa(req, res) {
   try {
     const { inicio, fim, pagina } = req.query;
+    const prestador = getPrestadorConsulta(req);
     const resultado = await nfseService.consultarNfsePorFaixa(
       parseInt(inicio, 10),
       parseInt(fim, 10),
-      parseInt(pagina, 10) || 1
+      parseInt(pagina, 10) || 1,
+      prestador.documento,
+      prestador.inscricaoMunicipal
     );
     res.json(resultado);
   } catch (err) {
-    res.status(500).json({ sucesso: false, erro: err.message });
+    return responderErro(res, err);
   }
 }
 
 async function consultarNfseServicoPrestado(req, res) {
   try {
     const { dataInicial, dataFinal, pagina } = req.query;
-    const resultado = await nfseService.consultarNfseServicoPrestado(dataInicial, dataFinal, parseInt(pagina, 10) || 1);
+    const prestador = getPrestadorConsulta(req);
+    const resultado = await nfseService.consultarNfseServicoPrestado(dataInicial, dataFinal, parseInt(pagina, 10) || 1, prestador.documento, prestador.inscricaoMunicipal);
     res.json(resultado);
   } catch (err) {
-    res.status(500).json({ sucesso: false, erro: err.message });
+    return responderErro(res, err);
   }
 }
 
 async function consultarNfseServicoTomado(req, res) {
   try {
     const { cnpj, dataInicial, dataFinal, pagina } = req.query;
-    const resultado = await nfseService.consultarNfseServicoTomado(cnpj, dataInicial, dataFinal, parseInt(pagina, 10) || 1);
+    const prestador = getPrestadorConsulta(req);
+    const resultado = await nfseService.consultarNfseServicoTomado(cnpj || prestador.documento, dataInicial, dataFinal, parseInt(pagina, 10) || 1, prestador.inscricaoMunicipal);
     res.json(resultado);
   } catch (err) {
-    res.status(500).json({ sucesso: false, erro: err.message });
+    return responderErro(res, err);
   }
 }
 
 async function cancelarNfse(req, res) {
   try {
-    const { numeroNota, codigoVerificacao, motivo } = req.body;
+    const { numeroNota, codigoVerificacao, chaveAcesso, chNFSe, motivo } = req.body;
     const tenantId = req.tenantId || 'default-tenant-id';
     const { pfxBuffer, password } = await loadCert(tenantId);
     if (!pfxBuffer || !password) {
       return res.status(400).json({ sucesso: false, erro: 'Certificado ou senha não fornecidos/válidos.' });
     }
-    const resultado = await nfseService.cancelarNfse(numeroNota, codigoVerificacao, motivo, pfxBuffer, password);
+    const prestador = getPrestadorConsulta(req);
+    const resultado = await nfseService.cancelarNfse(
+      numeroNota,
+      chNFSe || chaveAcesso || codigoVerificacao,
+      motivo,
+      pfxBuffer,
+      password,
+      prestador.documento
+    );
     res.json(resultado);
   } catch (err) {
     if (err.message.includes('Falha ao carregar certificado') || err.message.includes('Senha do certificado PKCS#12 inválida')) {
       return res.status(401).json({ sucesso: false, erro: `Erro de certificado: ${err.message}` });
     }
-    res.status(500).json({ sucesso: false, erro: err.message });
+    return responderErro(res, err);
   }
 }
 
 async function substituirNfse(req, res) {
   try {
-    const { numeroNota, codigoVerificacao, novaDps, motivo } = req.body;
+    const { numeroNota, codigoVerificacao, chaveAcesso, chNFSe, novaDps, motivo } = req.body;
     const tenantId = req.tenantId || 'default-tenant-id';
     const { pfxBuffer, password } = await loadCert(tenantId);
     if (!pfxBuffer || !password) {
       return res.status(400).json({ sucesso: false, erro: 'Certificado ou senha não fornecidos/válidos.' });
     }
-    const resultado = await nfseService.substituirNfse(numeroNota, codigoVerificacao, novaDps, motivo, pfxBuffer, password);
+    const dps = withTenantPrestador(novaDps, req.tenant);
+    const resultado = await nfseService.substituirNfse(numeroNota, chNFSe || chaveAcesso || codigoVerificacao, dps, motivo, pfxBuffer, password);
     res.json(resultado);
   } catch (err) {
     if (err.message.includes('Falha ao carregar certificado') || err.message.includes('Senha do certificado PKCS#12 inválida')) {
       return res.status(401).json({ sucesso: false, erro: `Erro de certificado: ${err.message}` });
     }
-    res.status(500).json({ sucesso: false, erro: err.message });
+    return responderErro(res, err);
   }
 }
 
 async function consultarUrlNfse(req, res) {
   try {
     const { numero } = req.params;
-    const resultado = await nfseService.consultarUrlNfse(numero);
+    const prestador = getPrestadorConsulta(req);
+    const resultado = await nfseService.consultarUrlNfse(numero, prestador.documento, prestador.inscricaoMunicipal);
     res.json(resultado);
   } catch (err) {
-    res.status(500).json({ sucesso: false, erro: err.message });
+    return responderErro(res, err);
   }
 }
 
 async function consultarDadosCadastrais(req, res) {
   try {
-    const resultado = await nfseService.consultarDadosCadastrais();
+    const prestador = getPrestadorConsulta(req);
+    const resultado = await nfseService.consultarDadosCadastrais(prestador.documento, prestador.inscricaoMunicipal);
     res.json(resultado);
   } catch (err) {
-    res.status(500).json({ sucesso: false, erro: err.message });
+    return responderErro(res, err);
   }
 }
 
 async function consultarDpsDisponivel(req, res) {
   try {
     const { pagina } = req.query;
-    const resultado = await nfseService.consultarDpsDisponivel(parseInt(pagina, 10) || 1);
+    const prestador = getPrestadorConsulta(req);
+    const resultado = await nfseService.consultarDpsDisponivel(parseInt(pagina, 10) || 1, prestador.documento, prestador.inscricaoMunicipal);
     res.json(resultado);
   } catch (err) {
-    res.status(500).json({ sucesso: false, erro: err.message });
+    return responderErro(res, err);
   }
+}
+
+function catalogoFiscal(req, res) {
+  res.json(taxTables.getCatalogo(req.query.cTribNac));
 }
 
 module.exports = {
@@ -313,4 +368,5 @@ module.exports = {
   consultarUrlNfse,
   consultarDadosCadastrais,
   consultarDpsDisponivel,
+  catalogoFiscal,
 };

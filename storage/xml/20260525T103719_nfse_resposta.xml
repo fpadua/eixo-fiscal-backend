@@ -1,0 +1,50 @@
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <s:Body>
+    <GerarNfseResponse xmlns="http://www.sped.fazenda.gov.br/nfse">
+      <GerarNfseResposta>
+        <ListaMensagemRetorno>
+          <MensagemRetorno>
+            <Codigo>E0004</Codigo>
+            <Mensagem>Conteúdo do identificador informado na DPS difere da concatenação dos campos correspondentes.</Mensagem>
+            <Correcao>O identificador da DPS é formado conforme a concatenação dos seguintes campos: "DPS" + Cód.Mun.Emi. + Tipo de Inscrição Federal + Inscrição Federal + Série DPS + Núm. DPS  Campo identificador da DPS inválido. Identificador da DPS difere da concatenação dos campos correspondentes. "DPS" + Cód.Mun.Emi. + Tipo de Inscrição Federal + Inscrição Federal + Série DPS + Núm. DPS   Verificar se tipo de inscrição e inscrição, informados no identificador da DPS, estão corretamente correspondidos conforme o seguinte:  Tipo de inscrição Federal = 1 / Inscrição Federal = CPF emitente da DPS; Tipo de inscrição Federal = 2 / Inscrição Federal = CNPJ emitente da DPS;  Cód.Mun.Emi. é o código do município do endereço do emitente da DPS.</Correcao>
+          </MensagemRetorno>
+          <MensagemRetorno>
+            <Codigo>E093</Codigo>
+            <Mensagem>Série da DPS inválida.</Mensagem>
+            <Correcao>Identifique a DPS utilizando no máximo 5 dígitos.</Correcao>
+          </MensagemRetorno>
+          <MensagemRetorno>
+            <Codigo>E090</Codigo>
+            <Mensagem>Número da DPS inválido.</Mensagem>
+            <Correcao>Informe um número de DPS que corresponda à seqüência utilizada pelo prestador do serviço.</Correcao>
+          </MensagemRetorno>
+          <MensagemRetorno>
+            <Codigo>L116</Codigo>
+            <Mensagem>A localidade emissora informada na DPS está incorreta.</Mensagem>
+            <Correcao>O código IBGE deve ser da localidade responsável por emitir a nota.</Correcao>
+          </MensagemRetorno>
+          <MensagemRetorno>
+            <Codigo>L039</Codigo>
+            <Mensagem>Emitente não está autorizado a emitir nota com esta tributação de ISSQN.</Mensagem>
+            <Correcao>Verifique as tributações de ISSQN permitidas para emissão de nota.</Correcao>
+          </MensagemRetorno>
+          <MensagemRetorno>
+            <Codigo>E0314</Codigo>
+            <Mensagem>O código de tributação municipal informado não existe ou não está administrado pelo município de incidência do ISSQN na data de competência informada na DPS,</Mensagem>
+            <Correcao>Verificar se o código de tributação municipal informado existe e está administrado pelo município de incidência do ISSQN na data de competência informada na DPS.</Correcao>
+          </MensagemRetorno>
+          <MensagemRetorno>
+            <Codigo>L111</Codigo>
+            <Mensagem>Não é permitido ao emitente tributar fora do município.</Mensagem>
+            <Correcao>Procure a Prefeitura para atualizar o cadastro da empresa.</Correcao>
+          </MensagemRetorno>
+          <MensagemRetorno>
+            <Codigo>L003</Codigo>
+            <Mensagem>O Código de tributação informado não pertence a este contribuinte.</Mensagem>
+            <Correcao>Consulte junto a prefeitura de seu município o código vigente.</Correcao>
+          </MensagemRetorno>
+        </ListaMensagemRetorno>
+      </GerarNfseResposta>
+    </GerarNfseResponse>
+  </s:Body>
+</s:Envelope>

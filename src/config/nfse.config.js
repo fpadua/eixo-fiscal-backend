@@ -102,7 +102,7 @@ function getConfig(explicitVersion) {
     },
 
     // Código IBGE de Goiânia
-    codigoMunicipioNacional: process.env.CODIGO_MUNICIPIO_NACIONAL || '5002704',
+    codigoMunicipioNacional: process.env.CODIGO_MUNICIPIO_NACIONAL || '',
     codigoMunicipioCampoGrande: '5002704',
     codigoMunicipioGoiania: '5208707',
   };

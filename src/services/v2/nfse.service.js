@@ -312,47 +312,51 @@ async function recepcionarLoteDps(listaDps, numeroLote, pfxBuffer, password) {
   return _anexarXmlAuditoria(resultado, xmlAssinado, respostaSoap, 'lote_dps');
 }
 
-async function consultarLoteDps(protocolo) {
-  const xml = xmlService.gerarXmlConsultaLote(protocolo, config.prestador.cnpj, config.prestador.inscricaoMunicipal);
+async function consultarLoteDps(protocolo, cnpjPrestador = config.prestador.cnpj, inscricaoMunicipal = config.prestador.inscricaoMunicipal) {
+  const xml = xmlService.gerarXmlConsultaLote(protocolo, cnpjPrestador, inscricaoMunicipal);
   const respostaSoap = await soapService.enviarSoap('ConsultarLoteDps', xml);
   return _parsearResposta(respostaSoap);
 }
 
-async function consultarSituacaoLote(protocolo) {
-  const xml = xmlService.gerarXmlConsultaSituacaoLote(protocolo, config.prestador.cnpj, config.prestador.inscricaoMunicipal);
-  const respostaSoap = await soapService.enviarSoap('ConsultarSituacaoLoteDps', xml);
+async function consultarSituacaoLote(protocolo, cnpjPrestador = config.prestador.cnpj, inscricaoMunicipal = config.prestador.inscricaoMunicipal) {
+  const xml = xmlService.gerarXmlConsultaSituacaoLote(protocolo, cnpjPrestador, inscricaoMunicipal);
+  const respostaSoap = await soapService.enviarSoap('ConsultarLoteDps', xml);
   return _parsearResposta(respostaSoap);
 }
 
-async function consultarNfsePorDps(numeroDps, serieDps, pfxBuffer, password) {
-  const xml = xmlService.gerarXmlConsultaPorDps(numeroDps, serieDps, config.prestador.cnpj, config.prestador.inscricaoMunicipal);
+async function consultarNfsePorDps(numeroDps, serieDps, pfxBuffer, password, cnpjPrestador = config.prestador.cnpj, inscricaoMunicipal = config.prestador.inscricaoMunicipal) {
+  const xml = xmlService.gerarXmlConsultaPorDps(numeroDps, serieDps, cnpjPrestador, inscricaoMunicipal);
   const idElemento = _extrairIdXml(xml) || `dps:${numeroDps}`;
   const xmlAssinado = await _assinarXml(xml, idElemento, pfxBuffer, password);
   const respostaSoap = await soapService.enviarSoap('ConsultarNfsePorDps', xmlAssinado, pfxBuffer, password);
   return _parsearResposta(respostaSoap);
 }
 
-async function consultarNfsePorFaixa(numeroInicial, numeroFinal, pagina) {
-  const xml = xmlService.gerarXmlConsultaPorFaixa(numeroInicial, numeroFinal, pagina, config.prestador.cnpj, config.prestador.inscricaoMunicipal);
+async function consultarNfsePorFaixa(numeroInicial, numeroFinal, pagina, cnpjPrestador = config.prestador.cnpj, inscricaoMunicipal = config.prestador.inscricaoMunicipal) {
+  const xml = xmlService.gerarXmlConsultaPorFaixa(numeroInicial, numeroFinal, pagina, cnpjPrestador, inscricaoMunicipal);
   const respostaSoap = await soapService.enviarSoap('ConsultarNfseFaixa', xml);
   return _parsearResposta(respostaSoap);
 }
 
-async function consultarNfseServicoPrestado(dataInicial, dataFinal, pagina) {
-  const xml = xmlService.gerarXmlConsultaServicosPrestados(dataInicial, dataFinal, config.prestador.cnpj, config.prestador.inscricaoMunicipal, pagina);
+async function consultarNfseServicoPrestado(dataInicial, dataFinal, pagina, cnpjPrestador = config.prestador.cnpj, inscricaoMunicipal = config.prestador.inscricaoMunicipal) {
+  const xml = xmlService.gerarXmlConsultaServicosPrestados(dataInicial, dataFinal, cnpjPrestador, inscricaoMunicipal, pagina);
   const respostaSoap = await soapService.enviarSoap('ConsultarNfseServicoPrestado', xml);
   return _parsearResposta(respostaSoap);
 }
 
-async function consultarNfseServicoTomado(cnpjConsulente, dataInicial, dataFinal, pagina) {
-  const xml = xmlService.gerarXmlConsultaServicosTomados(cnpjConsulente || config.prestador.cnpj, config.prestador.inscricaoMunicipal, dataInicial, dataFinal, pagina);
+async function consultarNfseServicoTomado(cnpjConsulente, dataInicial, dataFinal, pagina, inscricaoMunicipal = config.prestador.inscricaoMunicipal) {
+  const xml = xmlService.gerarXmlConsultaServicosTomados(cnpjConsulente || config.prestador.cnpj, inscricaoMunicipal, dataInicial, dataFinal, pagina);
   const respostaSoap = await soapService.enviarSoap('ConsultarNfseServicoTomado', xml);
   return _parsearResposta(respostaSoap);
 }
 
-async function cancelarNfse(numeroNota, codigoVerificacao, motivo, pfxBuffer, password) {
-  const xml = xmlService.gerarXmlCancelamento(numeroNota, codigoVerificacao, config.prestador.cnpj, config.prestador.inscricaoMunicipal, motivo);
-  const xmlAssinado = await _assinarXml(xml, `cancel:${numeroNota}`, pfxBuffer, password);
+async function cancelarNfse(numeroNota, codigoVerificacao, motivo, pfxBuffer, password, autorDocumento) {
+  const xml = xmlService.gerarXmlCancelamento({
+    chNFSe: codigoVerificacao,
+    documentoAutor: autorDocumento || config.prestador.cnpj,
+    motivo,
+  });
+  const xmlAssinado = await _assinarXml(xml, _extrairIdXml(xml) || `cancel:${numeroNota}`, pfxBuffer, password);
   const respostaSoap = await soapService.enviarSoap('CancelarNfse', xmlAssinado, pfxBuffer, password);
   const resultado = _parsearResposta(respostaSoap);
   return _anexarXmlAuditoria(resultado, xmlAssinado, respostaSoap, 'cancelamento');
@@ -360,26 +364,26 @@ async function cancelarNfse(numeroNota, codigoVerificacao, motivo, pfxBuffer, pa
 
 async function substituirNfse(numeroNota, codigoVerificacao, novaDps, motivo, pfxBuffer, password) {
   const xml = xmlService.gerarXmlSubstituicao(numeroNota, codigoVerificacao, novaDps, config.prestador.cnpj, config.prestador.inscricaoMunicipal, motivo);
-  const xmlAssinado = await _assinarXml(xml, `subst:${numeroNota}`, pfxBuffer, password);
-  const respostaSoap = await soapService.enviarSoap('SubstituirNfse', xmlAssinado, pfxBuffer, password);
+  const xmlAssinado = await _assinarXml(xml, _extrairIdXml(xml) || `subst:${numeroNota}`, pfxBuffer, password);
+  const respostaSoap = await soapService.enviarSoap('GerarNfse', xmlAssinado, pfxBuffer, password);
   const resultado = _parsearResposta(respostaSoap);
   return _anexarXmlAuditoria(resultado, xmlAssinado, respostaSoap, 'substituicao');
 }
 
-async function consultarUrlNfse(numeroNfse) {
-  const xml = xmlService.gerarXmlConsultaUrlNfse(numeroNfse, config.prestador.cnpj, config.prestador.inscricaoMunicipal);
+async function consultarUrlNfse(numeroNfse, cnpjPrestador = config.prestador.cnpj, inscricaoMunicipal = config.prestador.inscricaoMunicipal) {
+  const xml = xmlService.gerarXmlConsultaUrlNfse(numeroNfse, cnpjPrestador, inscricaoMunicipal);
   const respostaSoap = await soapService.enviarSoap('ConsultarUrlNfse', xml);
   return _parsearResposta(respostaSoap);
 }
 
-async function consultarDadosCadastrais() {
-  const xml = xmlService.gerarXmlConsultaDadosCadastrais(config.prestador.cnpj, config.prestador.inscricaoMunicipal);
+async function consultarDadosCadastrais(cnpjPrestador = config.prestador.cnpj, inscricaoMunicipal = config.prestador.inscricaoMunicipal) {
+  const xml = xmlService.gerarXmlConsultaDadosCadastrais(cnpjPrestador, inscricaoMunicipal);
   const respostaSoap = await soapService.enviarSoap('ConsultarDadosCadastrais', xml);
   return _parsearResposta(respostaSoap);
 }
 
-async function consultarDpsDisponivel(pagina) {
-  const xml = xmlService.gerarXmlConsultaDpsDisponivel(config.prestador.cnpj, config.prestador.inscricaoMunicipal, pagina);
+async function consultarDpsDisponivel(pagina, cnpjPrestador = config.prestador.cnpj, inscricaoMunicipal = config.prestador.inscricaoMunicipal) {
+  const xml = xmlService.gerarXmlConsultaDpsDisponivel(cnpjPrestador, inscricaoMunicipal, pagina);
   const respostaSoap = await soapService.enviarSoap('ConsultarDpsDisponivel', xml);
   return _parsearResposta(respostaSoap);
 }

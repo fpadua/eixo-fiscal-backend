@@ -1,5 +1,6 @@
 const { XMLBuilder } = require('fast-xml-parser');
 const config = require('../../config/nfse.config');
+const taxTables = require('./tax-tables.service');
 
 const builder = new XMLBuilder({
   ignoreAttributes: false,
@@ -11,23 +12,23 @@ const builder = new XMLBuilder({
 const NS_NFSE = 'http://www.sped.fazenda.gov.br/nfse';
 const NS_DS = 'http://www.w3.org/2000/09/xmldsig#';
 const VERSAO_SCHEMA_NACIONAL = '1.01';
-const CODIGO_MUNICIPIO_CAMPO_GRANDE = '5002704';
-const SERIE_DPS_SUPORTE = '8';
-const CNPJ_HOMOLOGACAO = '43983294000121';
+const CODIGO_MUNICIPIO_EXEMPLO = '5208707';
+const SERIE_DPS_SUPORTE = '1';
+const CNPJ_EXEMPLO = '43983294000121';
 
 const PRESTADOR_HOMOLOGACAO = {
-  cnpj: CNPJ_HOMOLOGACAO,
+  cnpj: CNPJ_EXEMPLO,
   inscricaoMunicipal: '123456',
-  razaoSocial: 'Prestador Homologacao NFSe',
+  razaoSocial: 'Prestador Exemplo NFSe',
   endereco: {
-    logradouro: 'Rua Barao do Rio Branco',
+    logradouro: 'Rua Exemplo',
     numero: '1000',
     complemento: 'Sala 01',
     bairro: 'Centro',
-    codigoMunicipio: CODIGO_MUNICIPIO_CAMPO_GRANDE,
-    cep: '79002000',
+    codigoMunicipio: CODIGO_MUNICIPIO_EXEMPLO,
+    cep: '74000000',
   },
-  fone: '6733334444',
+  fone: '6233334444',
   email: 'homologacao@example.com',
 };
 
@@ -83,12 +84,12 @@ function isValidCnpj(value) {
 
 function getCodigoMunicipio(dados = {}) {
   return onlyDigits(
-    dados.codigoMunicipio
+    dados.prestador?.endereco?.codigoMunicipio
+      || dados.prestador?.endereco?.cMun
       || dados.codigoMunicipioPrestador
-      || dados.prestador?.endereco?.codigoMunicipio
+      || dados.codigoMunicipio
       || config.codigoMunicipioNacional
-      || config.codigoMunicipioCampoGrande
-      || CODIGO_MUNICIPIO_CAMPO_GRANDE
+      || config.codigoMunicipioGoiania
   );
 }
 
@@ -100,7 +101,7 @@ function getCodigoMunicipioPrestacao(dados = {}, codigoMunicipio) {
       || dados.codigoMunicipioIncidencia
       || dados.servico?.municipioIncidencia
       || codigoMunicipio
-      || CODIGO_MUNICIPIO_CAMPO_GRANDE
+      || CODIGO_MUNICIPIO_EXEMPLO
   );
 }
 
@@ -146,6 +147,11 @@ function formatarData(value) {
   return source.toISOString().slice(0, 10);
 }
 
+function formatarPagina(value) {
+  const pagina = onlyDigits(value || 1) || '1';
+  return pagina.padStart(7, '0').slice(-7);
+}
+
 function resolvePrestador(dados = {}) {
   const informado = dados.prestador || {};
   const configPrestador = config.prestador || {};
@@ -153,26 +159,28 @@ function resolvePrestador(dados = {}) {
   const documentoConfig = onlyDigits(configPrestador.cnpj || configPrestador.cpf);
   const inscricaoMunicipalInformada = nonEmpty(informado.inscricaoMunicipal || informado.IM);
   const inscricaoMunicipalConfig = nonEmpty(configPrestador.inscricaoMunicipal || configPrestador.IM);
+  const usarExemplo = Boolean(dados.usarPrestadorExemplo || config.isMock);
   const temPrestadorExplicito = Boolean(
     documentoInformado
       || documentoConfig
       || inscricaoMunicipalInformada
       || inscricaoMunicipalConfig
   );
+  const baseExemplo = usarExemplo && !temPrestadorExplicito ? PRESTADOR_HOMOLOGACAO : { endereco: {} };
   const base = {
-    ...PRESTADOR_HOMOLOGACAO,
+    ...baseExemplo,
     ...withoutEmptyValues(configPrestador),
     ...withoutEmptyValues(informado),
     endereco: {
-      ...PRESTADOR_HOMOLOGACAO.endereco,
+      ...baseExemplo.endereco,
       ...withoutEmptyValues(configPrestador.endereco),
       ...withoutEmptyValues(informado.endereco),
     },
   };
 
   let documento = documentoInformado || documentoConfig;
-  if (config.homologacao && !temPrestadorExplicito) {
-    documento = CNPJ_HOMOLOGACAO;
+  if (usarExemplo && !temPrestadorExplicito) {
+    documento = PRESTADOR_HOMOLOGACAO.cnpj;
   }
 
   if (documento.length !== 14 && documento.length !== 11) {
@@ -186,7 +194,7 @@ function resolvePrestador(dados = {}) {
   const inscricaoMunicipal = nonEmpty(
     inscricaoMunicipalInformada
       || inscricaoMunicipalConfig
-      || (!temPrestadorExplicito ? PRESTADOR_HOMOLOGACAO.inscricaoMunicipal : undefined)
+      || (usarExemplo && !temPrestadorExplicito ? PRESTADOR_HOMOLOGACAO.inscricaoMunicipal : undefined)
   );
   if (!inscricaoMunicipal) {
     throw new Error('Inscricao municipal do prestador e obrigatoria para a DPS nacional.');
@@ -196,19 +204,23 @@ function resolvePrestador(dados = {}) {
     documento,
     tipoInscricaoFederal: documento.length === 14 ? '2' : '1',
     inscricaoMunicipal: String(inscricaoMunicipal).slice(0, 15),
-    razaoSocial: nonEmpty(base.razaoSocial || base.xNome || PRESTADOR_HOMOLOGACAO.razaoSocial),
+    razaoSocial: nonEmpty(base.razaoSocial || base.xNome),
     endereco: base.endereco,
-    fone: onlyDigits(base.fone || base.telefone || PRESTADOR_HOMOLOGACAO.fone),
-    email: nonEmpty(base.email || PRESTADOR_HOMOLOGACAO.email),
+    fone: onlyDigits(base.fone || base.telefone),
+    email: nonEmpty(base.email),
   };
 }
 
-function montarEndereco(endereco = {}, codigoMunicipio) {
+function montarEndereco(endereco = {}, codigoMunicipio, options = {}) {
   const logradouro = nonEmpty(endereco.logradouro || endereco.xLgr);
   const numero = nonEmpty(endereco.numero || endereco.nro);
   const bairro = nonEmpty(endereco.bairro || endereco.xBairro);
   const cep = onlyDigits(endereco.cep || endereco.CEP);
-  const municipio = onlyDigits(endereco.codigoMunicipio || endereco.cMun || codigoMunicipio);
+  const municipio = onlyDigits(
+    endereco.codigoMunicipio
+      || endereco.cMun
+      || (options.usarFallbackMunicipio ? codigoMunicipio : '')
+  );
 
   if (!logradouro || !numero || !bairro || !cep || !municipio) return null;
 
@@ -242,7 +254,7 @@ function montarPessoaTomador(tomador = {}, codigoMunicipio) {
 
   pessoa.xNome = nonEmpty(tomador.razaoSocial || tomador.xNome || 'Tomador Homologacao');
 
-  const endereco = montarEndereco(tomador.endereco, codigoMunicipio);
+  const endereco = montarEndereco(tomador.endereco, codigoMunicipio, { usarFallbackMunicipio: false });
   if (endereco) pessoa.end = endereco;
 
   const fone = onlyDigits(tomador.fone || tomador.telefone || tomador.contato?.telefone);
@@ -262,7 +274,7 @@ function montarPrestador(prestador, codigoMunicipio) {
   xml.IM = prestador.inscricaoMunicipal;
   if (prestador.razaoSocial) xml.xNome = prestador.razaoSocial;
 
-  const endereco = montarEndereco(prestador.endereco, codigoMunicipio);
+  const endereco = montarEndereco(prestador.endereco, codigoMunicipio, { usarFallbackMunicipio: true });
   if (endereco) xml.end = endereco;
 
   if (prestador.fone) xml.fone = prestador.fone;
@@ -283,37 +295,174 @@ function montarPrestador(prestador, codigoMunicipio) {
 }
 
 function normalizarCTribNac(dados = {}) {
-  const digits = onlyDigits(dados.servico?.cTribNac || dados.cTribNac || dados.itemListaServico);
-  return digits.length === 6 ? digits : '010100';
+  return taxTables.normalizeCTribNac(dados.servico?.cTribNac || dados.cTribNac || dados.itemListaServico);
 }
 
 function normalizarCTribMun(dados = {}) {
-  return sanitizeMaxDigits(
-    dados.servico?.cTribMun || dados.servico?.codigoTributacao || dados.codigoTributacao,
-    10,
-    '1010100000'
+  return taxTables.normalizeCTribMun(
+    dados.servico?.cTribMun
+      || dados.servico?.codigoTributacao
+      || dados.cTribMun
+      || dados.codigoTributacao
   );
 }
 
-function montarIbsCbs(dados = {}) {
+function extrairFiscalServico(dados = {}) {
   const origem = typeof dados.IBSCBS === 'object'
     ? dados.IBSCBS
     : (typeof dados.ibsCBS === 'object' ? dados.ibsCBS : {});
   const gIBSCBS = origem.valores?.trib?.gIBSCBS || origem.trib?.gIBSCBS || origem.gIBSCBS || {};
 
-  return {
+  const fiscal = {
+    cTribNac: normalizarCTribNac(dados),
+    cTribMun: normalizarCTribMun(dados),
+    cNBS: taxTables.normalizeCNBS(origem.cNBS || dados.servico?.cNBS || dados.cNBS),
+    cIndOp: taxTables.normalizeCIndOp(origem.cIndOp ?? dados.cIndOp),
+    CST: taxTables.normalizeCST(gIBSCBS.CST ?? origem.CST ?? dados.CST),
+    cClassTrib: taxTables.normalizeCClassTrib(gIBSCBS.cClassTrib ?? origem.cClassTrib ?? dados.cClassTrib),
     finNFSe: String(origem.finNFSe ?? dados.finNFSe ?? 0),
-    cIndOp: sanitizeFixedDigits(origem.cIndOp ?? dados.cIndOp, 6, '000001'),
     indDest: String(origem.indDest ?? dados.indDest ?? 0),
+  };
+
+  fiscal.correlacao = taxTables.findCorrelacao(fiscal);
+  return fiscal;
+}
+
+function montarIbsCbs(dados = {}, fiscal = extrairFiscalServico(dados)) {
+  return {
+    finNFSe: fiscal.finNFSe,
+    cIndOp: fiscal.cIndOp,
+    indDest: fiscal.indDest,
     valores: {
       trib: {
         gIBSCBS: {
-          CST: sanitizeFixedDigits(gIBSCBS.CST ?? dados.CST, 3, '000'),
-          cClassTrib: sanitizeFixedDigits(gIBSCBS.cClassTrib ?? dados.cClassTrib, 6, '000000'),
+          CST: fiscal.CST,
+          cClassTrib: fiscal.cClassTrib,
         },
       },
     },
   };
+}
+
+const CINDOP_EXIGE_TOMADOR_ENDERECO = new Set([
+  '030102', '050102', '100101', '100301', '100501',
+  '030103', '050103', '100102', '100201', '100302',
+  '100401', '100502', '100601',
+]);
+
+function criarMensagemValidacao(codigo, mensagem, correcao) {
+  return { Codigo: codigo, Mensagem: mensagem, Correcao: correcao };
+}
+
+function criarErroValidacao(mensagens) {
+  const error = new Error('DPS v2 invalida. Revise os campos obrigatorios antes do envio.');
+  error.code = 'VALIDACAO_DPS_V2';
+  error.mensagensRetorno = mensagens;
+  return error;
+}
+
+function getDocumentoTomador(tomador = {}) {
+  return onlyDigits(tomador.cnpj || tomador.cpf || tomador.documento);
+}
+
+function hasRetencaoFederal(dados = {}) {
+  return Number(dados.tribFed?.vRetCP) > 0
+    || Number(dados.tribFed?.vRetIRRF) > 0
+    || Number(dados.tribFed?.vRetCSLL) > 0;
+}
+
+function validarDpsNegocio(dados = {}, contexto = {}) {
+  const mensagens = [];
+  const { prestador, codigoMunicipio, codigoMunicipioPrestacao, fiscal } = contexto;
+  const add = (codigo, mensagem, correcao) => mensagens.push(criarMensagemValidacao(codigo, mensagem, correcao));
+
+  if (!codigoMunicipio || codigoMunicipio.length !== 7) {
+    add('V2-LOC-EMI', 'Codigo da localidade emissora nao informado ou invalido.', 'Preencha o codigo IBGE de 7 digitos no cadastro da empresa/prestador.');
+  }
+
+  const municipioPrestador = onlyDigits(prestador?.endereco?.codigoMunicipio || prestador?.endereco?.cMun);
+  if (municipioPrestador && codigoMunicipio && municipioPrestador !== codigoMunicipio) {
+    add('V2-ID-DPS', 'Municipio usado no Id/cLocEmi difere do municipio do endereco do prestador.', 'Use o mesmo codigo IBGE do endereco do emitente para formar o Id da DPS e preencher cLocEmi.');
+  }
+
+  if (!prestador?.documento || !['11', '14'].includes(String(prestador.documento.length))) {
+    add('V2-PREST-DOC', 'Documento federal do prestador ausente ou invalido.', 'Preencha CPF ou CNPJ valido no cadastro da empresa.');
+  }
+
+  if (!prestador?.inscricaoMunicipal) {
+    add('V2-PREST-IM', 'Inscricao municipal do prestador nao informada.', 'Preencha a inscricao municipal da empresa.');
+  }
+
+  if (!codigoMunicipioPrestacao || codigoMunicipioPrestacao.length !== 7) {
+    add('V2-LOC-PREST', 'Codigo do local de prestacao nao informado ou invalido.', 'Informe o codigo IBGE de 7 digitos do local da prestacao.');
+  }
+
+  if (!fiscal.cTribNac || !taxTables.findTributacaoNacional(fiscal.cTribNac)) {
+    add('E0310', 'Codigo de tributacao nacional inexistente ou nao informado.', 'Selecione um cTribNac da tabela TributacaoNacional.xlsx.');
+  }
+
+  if (!fiscal.cTribMun) {
+    add('E0314', 'Codigo de tributacao municipal nao informado.', 'Informe o codigo municipal administrado pelo municipio de incidencia do ISSQN.');
+  }
+
+  if (!fiscal.cNBS || !taxTables.findNBS(fiscal.cNBS)) {
+    add('E0322', 'NBS obrigatoria/invalida para a declaracao de IBS/CBS.', 'Selecione uma correlacao que preencha cNBS, cClassTrib, CST e cIndOp.');
+  }
+
+  if (!fiscal.cIndOp || !taxTables.findIndOp(fiscal.cIndOp)) {
+    add('E0901', 'Codigo indicador da operacao inexistente ou nao informado.', 'Selecione uma correlacao fiscal valida para o servico informado.');
+  }
+
+  if (!fiscal.cClassTrib || !taxTables.findCClassTrib(fiscal.cClassTrib)) {
+    add('E0017', 'cClassTrib inexistente ou nao informado.', 'Selecione uma classificacao IBS/CBS publicada para prestacao de servicos.');
+  }
+
+  if (!fiscal.CST) {
+    add('V2-CST', 'CST IBS/CBS nao informado.', 'Selecione uma correlacao fiscal valida.');
+  }
+
+  if (fiscal.cTribNac && fiscal.cNBS && fiscal.cClassTrib && fiscal.CST && fiscal.cIndOp && !fiscal.correlacao) {
+    add('L119', 'Correlacao fiscal invalida para os servicos informados.', 'Use uma linha valida da planilha Correlacao_TribNac_NBS_cClassTribIBSCBS_CSTIBSCBS_IndOp.xlsx.');
+  }
+
+  const issRetido = dados.servico?.issRetido || dados.issRetido || false;
+  const documentoTomador = getDocumentoTomador(dados.tomador);
+  const exigeTomadorEndereco = Boolean(issRetido)
+    || fiscal.cTribNac === '170501'
+    || CINDOP_EXIGE_TOMADOR_ENDERECO.has(fiscal.cIndOp);
+
+  if (exigeTomadorEndereco && !documentoTomador) {
+    add('V2-TOMADOR', 'Tomador obrigatorio para a operacao fiscal selecionada.', 'Informe CPF/CNPJ e nome do tomador.');
+  }
+
+  if (documentoTomador && ![11, 14].includes(documentoTomador.length)) {
+    add('V2-TOMADOR-DOC', 'Documento do tomador invalido.', 'Informe CPF com 11 digitos ou CNPJ com 14 digitos.');
+  }
+
+  if (exigeTomadorEndereco) {
+    const endereco = dados.tomador?.endereco || {};
+    const campos = [
+      ['logradouro', endereco.logradouro || endereco.xLgr, 'logradouro'],
+      ['numero', endereco.numero || endereco.nro, 'numero'],
+      ['bairro', endereco.bairro || endereco.xBairro, 'bairro'],
+      ['cep', onlyDigits(endereco.cep || endereco.CEP), 'CEP'],
+      ['codigoMunicipio', onlyDigits(endereco.codigoMunicipio || endereco.cMun), 'codigo IBGE do municipio'],
+    ];
+
+    for (const [key, value, label] of campos) {
+      if (!nonEmpty(value)) {
+        add(key === 'logradouro' ? 'E056' : 'E0237', `Endereco nacional do tomador incompleto: ${label}.`, 'Informe logradouro, numero, bairro, CEP e codigo IBGE do municipio do tomador.');
+      }
+    }
+  }
+
+  if (hasRetencaoFederal(dados) && documentoTomador.length !== 14) {
+    add('E241', 'Retencoes federais so podem ser informadas para tomador pessoa juridica.', 'Zere as retencoes federais ou informe um tomador CNPJ.');
+  }
+
+  if (mensagens.length > 0) {
+    throw criarErroValidacao(mensagens);
+  }
 }
 
 function gerarIdDPS(codigoMunicipio, tipoInscricaoFederal, inscricaoFederal, serie, numero) {
@@ -342,6 +491,13 @@ function montarDpsObject(dados, includeNamespace = false) {
   const codigoMunicipio = getCodigoMunicipio(dados);
   const codigoMunicipioPrestacao = getCodigoMunicipioPrestacao(dados, codigoMunicipio);
   const prestador = resolvePrestador(dados);
+  const fiscal = extrairFiscalServico(dados);
+  validarDpsNegocio(dados, {
+    prestador,
+    codigoMunicipio,
+    codigoMunicipioPrestacao,
+    fiscal,
+  });
   const serieDps = getSerieDps(dados);
   const numeroDps = getNumeroDps(dados);
   const idDps = gerarIdDPS(
@@ -357,7 +513,6 @@ function montarDpsObject(dados, includeNamespace = false) {
   const vDescCond = Number(dados.servico?.vDescCond || dados.vDescCond || 0);
   const pAliq = Number(dados.servico?.aliquota || dados.aliquota || 2);
   const issRetido = dados.servico?.issRetido || dados.issRetido || false;
-  const cNBS = nonEmpty(dados.servico?.cNBS || dados.cNBS);
 
   const tribFed = {};
   if (Number(dados.tribFed?.vRetCP) > 0) tribFed.vRetCP = formatDecimal(dados.tribFed.vRetCP);
@@ -366,7 +521,7 @@ function montarDpsObject(dados, includeNamespace = false) {
 
   const trib = {
     tribMun: {
-      tribISSQN: String(dados.tribISSQN || dados.tributacao || 1),
+      tribISSQN: String(dados.servico?.tribISSQN || dados.tribISSQN || dados.tributacao || 1),
       tpRetISSQN: issRetido ? '2' : '1',
       pAliq: formatDecimal(pAliq),
     },
@@ -374,14 +529,14 @@ function montarDpsObject(dados, includeNamespace = false) {
 
   if (dados.cPaisResult) trib.tribMun.cPaisResult = String(dados.cPaisResult);
   if (Object.keys(tribFed).length > 0) trib.tribFed = tribFed;
-  trib.totTrib = { indTotTrib: '0' };
+  trib.totTrib = { indTotTrib: String(dados.indTotTrib ?? dados.servico?.indTotTrib ?? 0) };
 
   const cServ = {
-    cTribNac: normalizarCTribNac(dados),
-    cTribMun: normalizarCTribMun(dados),
+    cTribNac: fiscal.cTribNac,
+    cTribMun: fiscal.cTribMun,
     xDescServ: nonEmpty(dados.servico?.discriminacao || dados.discriminacao || 'Servicos prestados'),
   };
-  if (cNBS) cServ.cNBS = cNBS;
+  if (fiscal.cNBS) cServ.cNBS = fiscal.cNBS;
 
   const serv = {
     locPrest: {
@@ -420,6 +575,13 @@ function montarDpsObject(dados, includeNamespace = false) {
     dCompet: formatarData(dados.dCompet || dados.rps?.competencia || dados.rps?.dataEmissao),
     tpEmit: String(dados.tpEmit || 1),
     cLocEmi: codigoMunicipio,
+    ...(dados.subst ? {
+      subst: {
+        chSubstda: onlyDigits(dados.subst.chSubstda || dados.subst.chNFSe || dados.subst.chaveAcesso),
+        cMotivo: String(dados.subst.cMotivo || dados.subst.motivo || '99').padStart(2, '0'),
+        ...(dados.subst.xMotivo ? { xMotivo: String(dados.subst.xMotivo).slice(0, 255) } : {}),
+      },
+    } : {}),
     prest: (() => {
       const p = montarPrestador({
         ...prestador,
@@ -439,7 +601,7 @@ function montarDpsObject(dados, includeNamespace = false) {
   if (tomador) infDPS.toma = tomador;
   infDPS.serv = serv;
   infDPS.valores = valores;
-  infDPS.IBSCBS = montarIbsCbs(dados);
+  infDPS.IBSCBS = montarIbsCbs(dados, fiscal);
 
   if (dados.pag) infDPS.pag = dados.pag;
 
@@ -550,56 +712,92 @@ function gerarXmlRecepcaoLoteDps(listaDps, numeroLote) {
   return `<?xml version="1.0" encoding="UTF-8"?>\n${builder.build(xmlObj)}`;
 }
 
-function gerarXmlCancelamento(numeroNfse, codigoVerificacao, cnpjPrestador, inscricaoMunicipal, motivo) {
-  const cnpj = onlyDigits(cnpjPrestador);
-  const codigoMunicipio = config.codigoMunicipioNacional || CODIGO_MUNICIPIO_CAMPO_GRANDE;
+function montarAutorEvento(documento) {
+  const digits = onlyDigits(documento);
+  if (digits.length === 14) return { CNPJAutor: digits };
+  if (digits.length === 11) return { CPFAutor: digits };
+  throw criarErroValidacao([
+    criarMensagemValidacao('V2-EVT-AUTOR', 'Documento do autor do evento nao informado ou invalido.', 'Informe CPF ou CNPJ do prestador/autor do evento.'),
+  ]);
+}
 
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<CancelarNfseEnvio xmlns="${NS_NFSE}" versao="${VERSAO_SCHEMA_NACIONAL}">
-  <pedRegEvento versao="${VERSAO_SCHEMA_NACIONAL}">
-    <infPedReg>
-      <tpAmb>2</tpAmb>
-      <verAplic>NFSe-Nacional-v2</verAplic>
-      <dhEvento>${formatarDhEmi()}</dhEvento>
-      <CNPJAutor>${cnpj}</CNPJAutor>
-      <chNFSe>${codigoMunicipio}1${cnpj.padStart(14, '0')}${String(numeroNfse).padStart(13, '0')}${new Date().toISOString().slice(0, 4) + new Date().toISOString().slice(5, 7)}0000000011</chNFSe>
-      <e101101>
-        <xDesc>Cancelamento de NFS-e</xDesc>
-        <cMotivo>${motivo || 1}</cMotivo>
-        <xMotivo>${motivo === 9 ? 'Outros' : 'Erro na Emissao'}</xMotivo>
-      </e101101>
-    </infPedReg>
-  </pedRegEvento>
-</CancelarNfseEnvio>`;
+function montarPedidoEvento({ chNFSe, documentoAutor, motivo = 1, xMotivo, tipoEvento = 'e101103', tpAmb } = {}) {
+  const chave = onlyDigits(chNFSe);
+  if (chave.length !== 50) {
+    throw criarErroValidacao([
+      criarMensagemValidacao('V2-EVT-CHAVE', 'Chave de acesso da NFS-e invalida para evento.', 'Informe a chave NFS-e com 50 digitos.'),
+    ]);
+  }
 
-  return xml;
+  const tipoNumerico = onlyDigits(tipoEvento);
+  const infPedReg = {
+    '@_Id': `PRE${chave}${tipoNumerico}`,
+    tpAmb: String(tpAmb || config.tpAmb || 2),
+    verAplic: 'NFSe-Nacional-v2',
+    dhEvento: formatarDhEmi(),
+    ...montarAutorEvento(documentoAutor),
+    chNFSe: chave,
+  };
+
+  if (tipoEvento === 'e101103') {
+    infPedReg.e101103 = {
+      xDesc: 'Solicitação de Análise Fiscal para Cancelamento de NFS-e',
+      cMotivo: String(motivo || 1),
+      xMotivo: nonEmpty(xMotivo) || 'Solicitacao de analise fiscal para cancelamento',
+    };
+  } else {
+    infPedReg.e101101 = {
+      xDesc: 'Cancelamento de NFS-e',
+      cMotivo: String(motivo || 1),
+      xMotivo: nonEmpty(xMotivo) || (String(motivo) === '9' ? 'Outros' : 'Erro na Emissao'),
+    };
+  }
+
+  return {
+    '@_versao': VERSAO_SCHEMA_NACIONAL,
+    infPedReg,
+  };
+}
+
+function gerarXmlCancelamento(paramsOrNumero, codigoVerificacao, cnpjPrestador, inscricaoMunicipal, motivo) {
+  const params = typeof paramsOrNumero === 'object'
+    ? paramsOrNumero
+    : {
+      chNFSe: codigoVerificacao,
+      documentoAutor: cnpjPrestador,
+      motivo,
+    };
+
+  const xmlObj = {
+    CancelarNfseEnvio: {
+      '@_xmlns': NS_NFSE,
+      '@_xmlns:dsig': NS_DS,
+      pedRegEvento: montarPedidoEvento({
+        chNFSe: params.chNFSe || params.chaveAcesso,
+        documentoAutor: params.documentoAutor || params.cnpjPrestador || params.cpfPrestador,
+        motivo: params.motivo,
+        xMotivo: params.xMotivo,
+        tipoEvento: params.tipoEvento || 'e101103',
+        tpAmb: params.tpAmb,
+      }),
+    },
+  };
+
+  return `<?xml version="1.0" encoding="UTF-8"?>\n${builder.build(xmlObj)}`;
 }
 
 function gerarXmlSubstituicao(numeroNfse, codigoVerificacao, novaDps, cnpjPrestador, inscricaoMunicipal, motivo) {
-  const cnpj = onlyDigits(cnpjPrestador);
-  const codigoMunicipio = config.codigoMunicipioNacional || CODIGO_MUNICIPIO_CAMPO_GRANDE;
-  const novaDpsXml = gerarXmlDps(novaDps);
+  const dpsSubstituta = {
+    ...novaDps,
+    subst: {
+      chSubstda: onlyDigits(codigoVerificacao),
+      cMotivo: String(motivo || 99).padStart(2, '0'),
+      xMotivo: 'Substituicao por nova NFS-e',
+      ...(novaDps?.subst || {}),
+    },
+  };
 
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<SubstituirNfseEnvio xmlns="${NS_NFSE}" versao="${VERSAO_SCHEMA_NACIONAL}">
-  <pedRegEvento versao="${VERSAO_SCHEMA_NACIONAL}">
-    <infPedReg>
-      <tpAmb>2</tpAmb>
-      <verAplic>NFSe-Nacional-v2</verAplic>
-      <dhEvento>${formatarDhEmi()}</dhEvento>
-      <CNPJAutor>${cnpj}</CNPJAutor>
-      <chNFSe>${codigoMunicipio}1${cnpj.padStart(14, '0')}${String(numeroNfse).padStart(13, '0')}${new Date().toISOString().slice(0, 4) + new Date().toISOString().slice(5, 7)}0000000011</chNFSe>
-      <e105102>
-        <xDesc>Cancelamento de NFS-e por Substituicao</xDesc>
-        <cMotivo>${motivo || 99}</cMotivo>
-        <xMotivo>Substituicao por nova NFS-e</xMotivo>
-      </e105102>
-    </infPedReg>
-  </pedRegEvento>
-  ${removerDeclaracaoXml(novaDpsXml)}
-</SubstituirNfseEnvio>`;
-
-  return xml;
+  return gerarXmlGerarNfse(dpsSubstituta);
 }
 
 function gerarXmlConsultaPorDps(numeroDps, serieDps, cnpjPrestador, inscricaoMunicipal) {
@@ -626,7 +824,7 @@ function gerarXmlConsultaPorFaixa(numeroInicial, numeroFinal, pagina, cnpjPresta
         NumeroNfseInicial: String(numeroInicial),
         NumeroNfseFinal: String(numeroFinal),
       },
-      Pagina: String(pagina || 1),
+      Pagina: formatarPagina(pagina),
     },
   };
 
@@ -646,7 +844,7 @@ function gerarXmlConsultaServicosPrestados(dataInicial, dataFinal, cnpjPrestador
       '@_xmlns': NS_NFSE,
       Prestador: montarPrestadorLote(cnpjPrestador, inscricaoMunicipal),
       PeriodoEmissao: montarPeriodo(dataInicial, dataFinal),
-      Pagina: String(pagina || 1),
+      Pagina: formatarPagina(pagina),
     },
   };
 
@@ -661,7 +859,7 @@ function gerarXmlConsultaServicosTomados(cnpjConsulente, inscricaoMunicipal, dat
       Consulente: prestador,
       PeriodoEmissao: montarPeriodo(dataInicial, dataFinal),
       Tomador: prestador,
-      Pagina: String(pagina || 1),
+      Pagina: formatarPagina(pagina),
     },
   };
 
@@ -681,9 +879,7 @@ function gerarXmlConsultaLote(protocolo, cnpjPrestador, inscricaoMunicipal) {
 }
 
 function gerarXmlConsultaSituacaoLote(protocolo, cnpjPrestador, inscricaoMunicipal) {
-  return gerarXmlConsultaLote(protocolo, cnpjPrestador, inscricaoMunicipal)
-    .replace('ConsultarLoteDpsEnvio', 'ConsultarSituacaoLoteDpsEnvio')
-    .replace('ConsultarLoteDpsEnvio', 'ConsultarSituacaoLoteDpsEnvio');
+  return gerarXmlConsultaLote(protocolo, cnpjPrestador, inscricaoMunicipal);
 }
 
 function gerarXmlConsultaUrlNfse(numeroNfse, cnpjPrestador, inscricaoMunicipal) {
@@ -692,7 +888,7 @@ function gerarXmlConsultaUrlNfse(numeroNfse, cnpjPrestador, inscricaoMunicipal) 
       '@_xmlns': NS_NFSE,
       Prestador: montarPrestadorLote(cnpjPrestador, inscricaoMunicipal),
       NumeroNfse: String(numeroNfse),
-      Pagina: '1',
+      Pagina: formatarPagina(1),
     },
   };
 
@@ -715,7 +911,7 @@ function gerarXmlConsultaDpsDisponivel(cnpjPrestador, inscricaoMunicipal, pagina
     ConsultarDpsDisponivelEnvio: {
       '@_xmlns': NS_NFSE,
       Prestador: montarPrestadorLote(cnpjPrestador, inscricaoMunicipal),
-      Pagina: String(pagina || 1),
+      Pagina: formatarPagina(pagina),
     },
   };
 

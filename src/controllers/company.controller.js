@@ -184,6 +184,7 @@ const cadastroSchema = z.object({
     numero: z.string().optional(),
     complemento: z.string().optional(),
     bairro: z.string().optional(),
+    cidade: z.string().optional(),
     codigoMunicipio: z.string().optional(),
     uf: z.string().length(2).optional(),
     cep: z.string().optional(),

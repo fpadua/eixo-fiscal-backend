@@ -11,7 +11,8 @@
     "db:seed": "node prisma/seed.js",
     "db:studio": "prisma studio",
     "db:migrate-json": "node prisma/migrate_json.js",
-    "db:generate": "prisma generate"
+    "db:generate": "prisma generate",
+    "xml:v2:modelos": "node scripts/generate-v2-xml-models.js"
   },
   "keywords": [
     "nfse",

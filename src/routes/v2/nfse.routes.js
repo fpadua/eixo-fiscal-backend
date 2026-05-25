@@ -20,5 +20,6 @@ router.post('/substituir', controller.substituirNfse);
 router.get('/consultar/url/:numero', controller.consultarUrlNfse);
 router.get('/dados-cadastrais', controller.consultarDadosCadastrais);
 router.get('/dps-disponivel', controller.consultarDpsDisponivel);
+router.get('/catalogo-fiscal', controller.catalogoFiscal);
 
 module.exports = router;
