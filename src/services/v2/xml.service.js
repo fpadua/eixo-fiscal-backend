@@ -2,6 +2,15 @@ const { XMLBuilder } = require('fast-xml-parser');
 const { getConfig } = require('../../config');
 const taxTables = require('./tax-tables.service');
 
+let config = null;
+const _cfgReady = (async () => {
+  config = await getConfig('default-tenant-id');
+})();
+
+async function _ensureConfig() {
+  if (!config) await _cfgReady;
+}
+
 const builder = new XMLBuilder({
   ignoreAttributes: false,
   attributeNamePrefix: '@_',
@@ -573,7 +582,7 @@ function montarDpsObject(dados, includeNamespace = false) {
     serie: serieDps,
     nDPS: numeroDps,
     dCompet: formatarData(dados.dCompet || dados.rps?.competencia || dados.rps?.dataEmissao),
-    tpEmit: String(dados.tpEmit || 1),
+    tpEmit: String(dados.tpEmit || prestador.tipoInscricaoFederal || '1'),
     cLocEmi: codigoMunicipio,
     ...(dados.subst ? {
       subst: {
@@ -589,7 +598,7 @@ function montarDpsObject(dados, includeNamespace = false) {
         regApTribSN: dados.regApTribSN || dados.regimeApuracao,
         regEspTrib: dados.regEspTrib ?? dados.regimeEspecialTributacao,
       }, codigoMunicipio);
-      if (String(dados.tpEmit || 1) === '1') {
+      if (String(dados.tpEmit || prestador.tipoInscricaoFederal || '1') === '1') {
         delete p.xNome;
         delete p.end;
       }

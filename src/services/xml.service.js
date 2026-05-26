@@ -2,6 +2,16 @@
 
 const { XMLBuilder } = require('fast-xml-parser');
 
+let config = null;
+const _cfgReady = (async () => {
+  const { getConfig } = require('../config/configProvider');
+  config = await getConfig('default-tenant-id');
+})();
+
+async function _ensureConfig() {
+  if (!config) await _cfgReady;
+}
+
 class XmlService {
   constructor() {
     this.builder = new XMLBuilder({

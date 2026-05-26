@@ -20,6 +20,15 @@ const crypto = require('xml-crypto');
 const fs = require('fs');
 const { getConfig } = require('../config/configProvider');
 
+let config = {};
+const _cfgReady = (async () => {
+  const cfg = await getConfig('default-tenant-id');
+  Object.assign(config, cfg);
+})();
+async function _ensureConfig() {
+  await _cfgReady;
+}
+
 /**
  * Carrega o certificado A1 (.pfx) e retorna chave privada + certificado PEM.
  *
@@ -222,7 +231,8 @@ ${closingTag}`
  * @param {string[]} ids
  * @returns {string} XML assinado ou simulado
  */
-function assinarMultiplos(xml, ids, pfxBuffer, password) {
+async function assinarMultiplos(xml, ids, pfxBuffer, password) {
+  await _ensureConfig();
   const pfxPath = config.cert?.path;
 
   if (config.isMock || (!pfxBuffer && (!pfxPath || !fs.existsSync(pfxPath)))) {
@@ -246,11 +256,12 @@ function assinarMultiplos(xml, ids, pfxBuffer, password) {
  * @param {string} idElemento
  * @returns {string} XML assinado
  */
-function assinar(xml, idElemento, pfxBuffer, password) {
+async function assinar(xml, idElemento, pfxBuffer, password) {
   return assinarMultiplos(xml, [idElemento], pfxBuffer, password);
 }
 
-function assinarLote(xml, idRps, idLote, pfxBuffer, password) {
+async function assinarLote(xml, idRps, idLote, pfxBuffer, password) {
+  await _ensureConfig();
   const pfxPath = config.cert?.path;
 
   if (config.isMock || (!pfxBuffer && (!pfxPath || !fs.existsSync(pfxPath)))) {

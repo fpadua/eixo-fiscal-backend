@@ -24,6 +24,15 @@ const signService = require('./sign.service');
 const soapService = require('./soap.service');
 const { getConfig } = require('../config/configProvider');
 
+let config = null;
+const _cfgReady = (async () => {
+  config = await getConfig('default-tenant-id');
+})();
+
+async function _ensureConfig() {
+  if (!config) await _cfgReady;
+}
+
 // Parser genérico para respostas SOAP
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -49,6 +58,7 @@ const parser = new XMLParser({
  * @returns {Promise<Object>}
  */
 async function emitirNfse(dados, pfxBuffer, password) {
+  await _ensureConfig();
   try {
     console.log('[NFSE] 1. Gerando XML do RPS...');
     const xmlRps = xmlService.gerarXmlRps(dados);
@@ -100,6 +110,7 @@ async function emitirNfse(dados, pfxBuffer, password) {
  * @returns {Promise<Object>}
  */
 async function emitirNfseLoteSincrono(dados, pfxBuffer, password) {
+  await _ensureConfig();
   const now = String(Date.now());
   const numeroLote = parseInt(now.slice(-15), 10) || 1;
 
@@ -146,6 +157,7 @@ async function emitirNfseLoteSincrono(dados, pfxBuffer, password) {
  * @returns {Promise<Object>}
  */
 async function emitirNfseSincrono(dados, pfxBuffer, password) {
+  await _ensureConfig();
   const xmlRps = xmlService.gerarXmlGerarNfse(dados);
   const idRps = `RPS${dados.rps.numero}`;
   const xmlAssinado = signService.assinar(xmlRps, idRps, pfxBuffer, password);
@@ -176,6 +188,7 @@ async function emitirNfseSincrono(dados, pfxBuffer, password) {
  * @param {number} [params.tipo]
  */
 async function consultarPorRps({ numeroRps, serie, tipo }) {
+  await _ensureConfig();
   const xml = xmlService.gerarXmlConsultaPorRps({ numeroRps, serie, tipo });
 
   // ConsultarNfseRpsEnvio NÃO exige assinatura na especificação,
@@ -197,6 +210,7 @@ async function consultarPorRps({ numeroRps, serie, tipo }) {
  * @param {number} [params.pagina=1]
  */
 async function consultarPorFaixa({ numeroInicial, numeroFinal, pagina }) {
+  await _ensureConfig();
   const xml = xmlService.gerarXmlConsultaPorFaixa({
     numeroInicial,
     numeroFinal,
@@ -217,6 +231,7 @@ async function consultarPorFaixa({ numeroInicial, numeroFinal, pagina }) {
   * @param {number} [params.pagina=1]
   */
 async function consultarServicosPrestados({ dataInicial, dataFinal, pagina }) {
+  await _ensureConfig();
   const xml = xmlService.gerarXmlConsultaServicosPrestados({
     dataInicial,
     dataFinal,
@@ -237,6 +252,7 @@ async function consultarServicosPrestados({ dataInicial, dataFinal, pagina }) {
   * @param {number} [params.pagina=1]
   */
 async function consultarServicosTomados({ cnpj, dataInicial, dataFinal, pagina }) {
+  await _ensureConfig();
   const xml = xmlService.gerarXmlConsultaServicosTomados({
     cnpj,
     dataInicial,
@@ -255,6 +271,7 @@ async function consultarServicosTomados({ cnpj, dataInicial, dataFinal, pagina }
  * @param {string} [params.inscricaoMunicipal] - IM opcional; fallback para prestador configurado
  */
 async function consultarDadosCadastrais({ documento, inscricaoMunicipal } = {}) {
+  await _ensureConfig();
   const docLimpo = String(documento || config.prestador.cnpj || '').replace(/\D/g, '');
   const im = inscricaoMunicipal || config.prestador.inscricaoMunicipal;
 
@@ -280,6 +297,7 @@ async function consultarDadosCadastrais({ documento, inscricaoMunicipal } = {}) 
  * @param {string} params.protocolo
  */
 async function consultarLoteRps({ protocolo }) {
+  await _ensureConfig();
   const xml = xmlService.gerarXmlConsultarLoteRps({ protocolo });
 
   const resposta = await soapService.enviarSoap('ConsultarLoteRps', xml);
@@ -297,6 +315,7 @@ async function consultarLoteRps({ protocolo }) {
  * @param {string} [params.cnpj]
  */
 async function consultarSituacaoLote({ protocolo, cnpj }) {
+  await _ensureConfig();
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
   <ConsultarSituacaoLoteRpsEnvio xmlns="http://www.abrasf.org.br/nfse.xsd">
     <Prestador>
@@ -324,6 +343,7 @@ async function consultarSituacaoLote({ protocolo, cnpj }) {
  * @param {number} [params.motivoCancelamento]
  */
 async function cancelarNfse({ numeroNota, codigoVerificacao, motivoCancelamento }) {
+  await _ensureConfig();
   const xml = xmlService.gerarXmlCancelamento({
     numeroNota,
     codigoVerificacao,
@@ -365,6 +385,7 @@ async function substituirNfse({
   motivoCancelamento,
   dadosNovaNota,
 }) {
+  await _ensureConfig();
   const xml = xmlService.gerarXmlSubstituicao({
     numeroNotaSubstituida,
     codigoVerificacao,

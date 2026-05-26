@@ -1,6 +1,15 @@
 const { z } = require('zod');
 const nfseService = require('../services/nfse.service');
 const { getConfig } = require('../config/configProvider');
+
+let config = null;
+const _cfgReady = (async () => {
+  config = await getConfig('default-tenant-id');
+})();
+
+async function _ensureConfig() {
+  if (!config) await _cfgReady;
+}
 const ClientRepository = require('../repositories/client.repository');
 const InvoiceRepository = require('../repositories/invoice.repository');
 const { TenantSettingsRepository } = require('../repositories/tenant.repository');
@@ -23,6 +32,7 @@ async function findOrCreateClient(tenantId, tomador) {
 }
 
 async function loadCert(tenantId) {
+  await _ensureConfig();
   if (config.isMock) return { pfxBuffer: null, password: null };
   try {
     const settingsRepo = new TenantSettingsRepository(tenantId);
@@ -497,6 +507,7 @@ async function consultarServicosPrestados(req, res) {
  * Lista todas as notas emitidas para o tomador no período.
  */
 async function consultarServicosTomados(req, res) {
+  await _ensureConfig();
   const { cnpj, dataInicial, dataFinal, pagina } = req.query;
   try {
     const resultado = await nfseService.consultarServicosTomados({
