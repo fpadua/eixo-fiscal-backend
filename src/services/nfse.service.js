@@ -22,7 +22,7 @@ const { XMLParser } = require('fast-xml-parser');
 const xmlService = require('./xml.service');
 const signService = require('./sign.service');
 const soapService = require('./soap.service');
-const config = require('../config/nfse.config');
+const { getConfig } = require('../config/configProvider');
 
 // Parser genérico para respostas SOAP
 const parser = new XMLParser({

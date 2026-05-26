@@ -18,7 +18,7 @@
 const forge = require('node-forge');
 const crypto = require('xml-crypto');
 const fs = require('fs');
-const config = require('../config/nfse.config');
+const { getConfig } = require('../config/configProvider');
 
 /**
  * Carrega o certificado A1 (.pfx) e retorna chave privada + certificado PEM.

@@ -3,15 +3,21 @@ const forge = require('node-forge');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
-const config = require('../config/nfse.config');
+const { getConfig } = require('../config/configProvider');
 
-const soapActionNamespace = config.version === 'v1'
-  ? 'http://nfse.abrasf.org.br'
-  : 'http://www.sped.fazenda.gov.br/nfse';
+let config = null;
+let soapActionNamespace = null;
 const XML_STORAGE_DIR = path.resolve('D:/Home/app-nfs/backend/storage/xml');
 const NFSE_V2_VERSAO_DADOS = process.env.NFSE_V2_VERSAO_DADOS || '1.01';
 const NFSE_V2_CABECALHO_XMLNS = process.env.NFSE_V2_CABECALHO_XMLNS || 'http://www.sped.fazenda.gov.br/nfse';
 let lastSoapAudit = null;
+
+(async () => {
+  config = await getConfig('default-tenant-id');
+  soapActionNamespace = config.version === 'v1'
+    ? 'http://nfse.abrasf.org.br'
+    : 'http://www.sped.fazenda.gov.br/nfse';
+})();
 
 function _salvarXmlAuditoria(nomeArquivo, conteudo) {
   if (!conteudo) return null;

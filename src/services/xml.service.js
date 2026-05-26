@@ -138,7 +138,7 @@ class XmlService {
   }
 
   gerarXmlConsultaServicosPrestados({ dataInicial, dataFinal, pagina }) {
-    const config = require('../config/nfse.config');
+    const { getConfig } = require('../config/configProvider');
     const cnpj = config.prestador.cnpj.replace(/\D/g, '');
     const inscricaoMunicipal = config.prestador.inscricaoMunicipal;
     const ns = 'http://nfse.abrasf.org.br';
@@ -161,7 +161,7 @@ class XmlService {
   }
 
   gerarXmlConsultaServicosTomados({ cnpj, dataInicial, dataFinal, pagina }) {
-    const config = require('../config/nfse.config');
+    const { getConfig } = require('../config/configProvider');
     const cnpjPrestador = (cnpj || config.prestador.cnpj).replace(/\D/g, '');
     const ns = 'http://nfse.abrasf.org.br';
 

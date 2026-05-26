@@ -1,5 +1,5 @@
 const nfseService = require('../../services/v2/nfse.service');
-const config = require('../../config/nfse.config');
+const { getConfig } = require('../../config');
 const { TenantSettingsRepository } = require('../../repositories/tenant.repository');
 const taxTables = require('../../services/v2/tax-tables.service');
 
@@ -83,7 +83,9 @@ function withTenantPrestadorList(listaDps = [], tenant) {
   return listaDps.map((dps) => withTenantPrestador(dps, tenant));
 }
 
-function getPrestadorConsulta(req) {
+async function getPrestadorConsulta(req) {
+  const tenantId = req.tenantId || 'default-tenant-id';
+  const config = await getConfig(tenantId);
   const prestador = prestadorFromTenant(req.tenant);
   return {
     documento: prestador.cnpj || prestador.cpf || config.prestador.cnpj || config.prestador.cpf,
@@ -106,6 +108,7 @@ function responderErro(res, err) {
 }
 
 async function loadCert(tenantId) {
+  const config = await getConfig(tenantId);
   if (config.isMock) return { pfxBuffer: null, password: null };
   try {
     const repo = new TenantSettingsRepository(tenantId);
@@ -194,7 +197,7 @@ async function recepcionarLoteDps(req, res) {
 async function consultarLoteDps(req, res) {
   try {
     const { protocolo } = req.params;
-    const prestador = getPrestadorConsulta(req);
+    const prestador = await getPrestadorConsulta(req);
     const resultado = await nfseService.consultarLoteDps(protocolo, prestador.documento, prestador.inscricaoMunicipal);
     res.json(resultado);
   } catch (err) {
@@ -205,7 +208,7 @@ async function consultarLoteDps(req, res) {
 async function consultarSituacaoLote(req, res) {
   try {
     const { protocolo } = req.params;
-    const prestador = getPrestadorConsulta(req);
+    const prestador = await getPrestadorConsulta(req);
     const resultado = await nfseService.consultarSituacaoLote(protocolo, prestador.documento, prestador.inscricaoMunicipal);
     res.json(resultado);
   } catch (err) {
@@ -222,7 +225,7 @@ async function consultarNfsePorDps(req, res) {
     if (!pfxBuffer || !password) {
       return res.status(400).json({ sucesso: false, erro: 'Certificado ou senha não fornecidos/válidos.' });
     }
-    const prestador = getPrestadorConsulta(req);
+    const prestador = await getPrestadorConsulta(req);
     const resultado = await nfseService.consultarNfsePorDps(numero, serie || '1', pfxBuffer, password, prestador.documento, prestador.inscricaoMunicipal);
     res.json(resultado);
   } catch (err) {
@@ -236,7 +239,7 @@ async function consultarNfsePorDps(req, res) {
 async function consultarNfsePorFaixa(req, res) {
   try {
     const { inicio, fim, pagina } = req.query;
-    const prestador = getPrestadorConsulta(req);
+    const prestador = await getPrestadorConsulta(req);
     const resultado = await nfseService.consultarNfsePorFaixa(
       parseInt(inicio, 10),
       parseInt(fim, 10),
@@ -253,7 +256,7 @@ async function consultarNfsePorFaixa(req, res) {
 async function consultarNfseServicoPrestado(req, res) {
   try {
     const { dataInicial, dataFinal, pagina } = req.query;
-    const prestador = getPrestadorConsulta(req);
+    const prestador = await getPrestadorConsulta(req);
     const resultado = await nfseService.consultarNfseServicoPrestado(dataInicial, dataFinal, parseInt(pagina, 10) || 1, prestador.documento, prestador.inscricaoMunicipal);
     res.json(resultado);
   } catch (err) {
@@ -264,7 +267,7 @@ async function consultarNfseServicoPrestado(req, res) {
 async function consultarNfseServicoTomado(req, res) {
   try {
     const { cnpj, dataInicial, dataFinal, pagina } = req.query;
-    const prestador = getPrestadorConsulta(req);
+    const prestador = await getPrestadorConsulta(req);
     const resultado = await nfseService.consultarNfseServicoTomado(cnpj || prestador.documento, dataInicial, dataFinal, parseInt(pagina, 10) || 1, prestador.inscricaoMunicipal);
     res.json(resultado);
   } catch (err) {
@@ -280,7 +283,7 @@ async function cancelarNfse(req, res) {
     if (!pfxBuffer || !password) {
       return res.status(400).json({ sucesso: false, erro: 'Certificado ou senha não fornecidos/válidos.' });
     }
-    const prestador = getPrestadorConsulta(req);
+    const prestador = await getPrestadorConsulta(req);
     const resultado = await nfseService.cancelarNfse(
       numeroNota,
       chNFSe || chaveAcesso || codigoVerificacao,
@@ -320,7 +323,7 @@ async function substituirNfse(req, res) {
 async function consultarUrlNfse(req, res) {
   try {
     const { numero } = req.params;
-    const prestador = getPrestadorConsulta(req);
+    const prestador = await getPrestadorConsulta(req);
     const resultado = await nfseService.consultarUrlNfse(numero, prestador.documento, prestador.inscricaoMunicipal);
     res.json(resultado);
   } catch (err) {
@@ -330,7 +333,7 @@ async function consultarUrlNfse(req, res) {
 
 async function consultarDadosCadastrais(req, res) {
   try {
-    const prestador = getPrestadorConsulta(req);
+    const prestador = await getPrestadorConsulta(req);
     const resultado = await nfseService.consultarDadosCadastrais(prestador.documento, prestador.inscricaoMunicipal);
     res.json(resultado);
   } catch (err) {
@@ -341,7 +344,7 @@ async function consultarDadosCadastrais(req, res) {
 async function consultarDpsDisponivel(req, res) {
   try {
     const { pagina } = req.query;
-    const prestador = getPrestadorConsulta(req);
+    const prestador = await getPrestadorConsulta(req);
     const resultado = await nfseService.consultarDpsDisponivel(parseInt(pagina, 10) || 1, prestador.documento, prestador.inscricaoMunicipal);
     res.json(resultado);
   } catch (err) {

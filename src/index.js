@@ -3,7 +3,15 @@ const express = require('express');
 const https = require('https');
 const fs = require('fs');
 const cors = require('cors');
-const config = require('./config/nfse.config');
+const config = {
+  frontendUrl: process.env.FRONTEND_URL || '',
+  port: parseInt(process.env.PORT, 10) || 3001,
+  version: process.env.VERSION || 'v2',
+  homologacao: process.env.HOMOLOGACAO === 'true',
+  isMock: process.env.MOCK === 'true',
+  tpAmb: process.env.TP_AMB || '1',
+  endpoint: process.env.NFSE_ENDPOINT || '',
+};
 const nfseRoutes = require('./routes/nfse.routes');
 const nfseRoutesV2 = require('./routes/v2/nfse.routes');
 const clienteRoutes = require('./routes/cliente.routes');

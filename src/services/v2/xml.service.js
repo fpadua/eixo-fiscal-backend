@@ -1,5 +1,5 @@
 const { XMLBuilder } = require('fast-xml-parser');
-const config = require('../../config/nfse.config');
+const { getConfig } = require('../../config');
 const taxTables = require('./tax-tables.service');
 
 const builder = new XMLBuilder({

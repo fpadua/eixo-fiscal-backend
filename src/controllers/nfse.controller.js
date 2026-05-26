@@ -1,6 +1,6 @@
 const { z } = require('zod');
 const nfseService = require('../services/nfse.service');
-const config = require('../config/nfse.config');
+const { getConfig } = require('../config/configProvider');
 const ClientRepository = require('../repositories/client.repository');
 const InvoiceRepository = require('../repositories/invoice.repository');
 const { TenantSettingsRepository } = require('../repositories/tenant.repository');

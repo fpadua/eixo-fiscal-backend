@@ -2,7 +2,7 @@ const { XMLParser } = require('fast-xml-parser');
 const xmlService = require('./xml.service');
 const signService = require('../sign.service');
 const soapService = require('../soap.service');
-const config = require('../../config/nfse.config');
+const { getConfig } = require('../../config/configProvider');
 const fs = require('fs');
 const path = require('path');
 
