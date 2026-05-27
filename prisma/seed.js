@@ -128,10 +128,10 @@ async function main() {
 
   await prisma.user.upsert({
     where: { email: masterEmail },
-    update: {},
+    update: { tenantId: null },
     create: {
       id: 'master-user-id',
-      tenantId: tenant.id,
+      tenantId: null,
       email: masterEmail,
       password: await bcrypt.hash(masterPassword, 10),
       nome: 'Master Administrador',

@@ -38,40 +38,16 @@ async function criar(req, res) {
   try {
     const tenantId = req.tenantId || 'default-tenant-id';
     const { email, password, nome, role } = req.body;
+    const effectiveTenantId = role === 'master' ? null : tenantId;
 
-    if (!email || !password || !nome) {
-      return res.status(400).json({ erro: 'Email, senha e nome são obrigatórios' });
-    }
-
-    if (password.length < 6) {
-      return res.status(400).json({ erro: 'Senha deve ter no mínimo 6 caracteres' });
-    }
-
-    const existing = await prisma.user.findFirst({ where: { tenantId, email } });
+    const existing = await prisma.user.findFirst({ where: { tenantId: effectiveTenantId, email } });
     if (existing) {
       return res.status(400).json({ erro: 'Email já cadastrado neste tenant' });
     }
-
-    const tenant = await prisma.tenant.findUnique({
-      where: { id: tenantId },
-      include: { plan: true, _count: { select: { users: { where: { status: 'active' } } } } },
-    });
-
-    if (tenant?.plan && tenant.plan.maxUsuarios > 0) {
-      if (tenant._count.users >= tenant.plan.maxUsuarios) {
-        return res.status(400).json({
-          erro: `Limite de ${tenant.plan.maxUsuarios} usuários do plano atingido.`,
-          code: 'PLAN_USER_LIMIT_EXCEEDED',
-        });
-      }
-    }
-
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
-      data: { tenantId, email, password: hashedPassword, nome, role: role || 'user', status: 'active' },
-      select: { id: true, email: true, nome: true, role: true, status: true, createdAt: true },
+      data: { tenantId: effectiveTenantId, email, password: hashedPassword, nome, role: role || 'user', status: 'active' },
     });
-
     res.status(201).json(user);
   } catch (error) {
     console.error('[USUARIO] Create error:', error);

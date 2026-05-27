@@ -55,7 +55,7 @@ model Plan {
 
 model TenantSettings {
   id                   String   @id @default(uuid())
-  tenantId             String   @unique
+  tenantId             String?  @unique
   certificateType      String?
   certificateContent   Bytes?
   certificatePassword  String?
@@ -67,14 +67,14 @@ model TenantSettings {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  tenant               Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant               Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("tenant_settings")
 }
 
 model User {
   id           String   @id @default(uuid())
-  tenantId     String
+  tenantId     String?
   email        String   @unique
   password     String
   nome         String
@@ -84,7 +84,7 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant       Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@index([email])

@@ -13,7 +13,9 @@ router.get('/consultar/lote/:protocolo', requirePermissao('consultar_status'), c
 router.get('/consultar/situacao-lote/:protocolo', requirePermissao('consultar_status'), controller.consultarSituacaoLote);
 router.get('/consultar/dps/:numero', requirePermissao('consultar_status'), controller.consultarNfsePorDps);
 router.get('/consultar/faixa', requirePermissao('consultar_status'), controller.consultarNfsePorFaixa);
-router.get('/consultar/prestados', requirePermissao('consultar_status'), controller.consultarNfseServicoPrestado);
+// router.get('/consultar/prestados', requirePermissao('consultar_status'), controller.consultarNfseServicoPrestado);
+router.get('/consultar/prestados', controller.consultarNfseServicoPrestado);
+
 router.get('/consultar/tomados', requirePermissao('consultar_status'), controller.consultarNfseServicoTomado);
 router.post('/cancelar', requirePermissao('cancelar_substituir'), controller.cancelarNfse);
 router.post('/substituir', requirePermissao('cancelar_substituir'), controller.substituirNfse);

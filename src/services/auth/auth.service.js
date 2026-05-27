@@ -27,9 +27,16 @@ class AuthService {
   }
 
   async login(email, password) {
-    const user = this.tenantId
+    let user = this.tenantId
       ? await this.userRepository.findByEmail(email)
       : await this.userRepository.findByEmailGlobal(email);
+
+    if (!user && this.tenantId) {
+      const globalUser = await this.userRepository.findByEmailGlobal(email);
+      if (globalUser?.role === 'master' && !globalUser.tenantId) {
+        user = globalUser;
+      }
+    }
     
     if (!user) {
       return { success: false, error: 'Credenciais inválidas' };

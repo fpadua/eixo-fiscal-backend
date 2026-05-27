@@ -6,7 +6,7 @@ const { requirePermissao } = require('../middleware/plan.middleware');
 const router = Router();
 
 router.use(authMiddleware);
-router.use(requirePermissao('clientes'));
+// router.use(requirePermissao('clientes'));
 
 router.get('/', ctrl.listar);
 router.get('/:id', ctrl.buscar);

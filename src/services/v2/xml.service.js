@@ -104,9 +104,9 @@ function getCodigoMunicipio(dados = {}) {
 
 function getCodigoMunicipioPrestacao(dados = {}, codigoMunicipio) {
   return onlyDigits(
-    dados.servico?.cLocPrestacao
+    dados.servico?.cMunIncid 
+      || dados.servico?.cLocPrestacao
       || dados.cLocPrestacao
-      || dados.servico?.cMunIncid
       || dados.codigoMunicipioIncidencia
       || dados.servico?.municipioIncidencia
       || codigoMunicipio

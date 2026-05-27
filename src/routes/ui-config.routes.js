@@ -9,7 +9,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 const router = Router();
 
 router.use(authMiddleware);
-router.use(requirePermissao('configuracoes'));
+// router.use(requirePermissao('configuracoes'));
 
 router.get('/nfse-ui', ctrl.getConfig);
 router.put('/nfse-ui', ctrl.updateConfig);

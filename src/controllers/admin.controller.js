@@ -153,13 +153,16 @@ async function atualizarTenant(req, res) {
 
 async function listarUsuarios(req, res) {
   try {
-    const { page = 1, limit = 50, search } = req.query;
+    const { page = 1, limit = 50, search, tenantId } = req.query;
     const where = { role: { not: 'master' } };
     if (search) {
       where.OR = [
         { nome: { contains: search, mode: 'insensitive' } },
         { email: { contains: search, mode: 'insensitive' } },
       ];
+    }
+    if (tenantId) {
+      where.tenantId = tenantId;
     }
     const [users, total] = await Promise.all([
       prisma.user.findMany({
@@ -193,13 +196,23 @@ async function getConfiguracoes(req, res) {
 
 async function relatoriosDashboard(req, res) {
   try {
+    const { tenantId } = req.query;
     const now = new Date();
     const meses = [];
     for (let i = 11; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const fim = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
-      const count = await prisma.invoice.count({ where: { createdAt: { gte: d, lt: fim }, status: { not: 'rascunho' } } });
-      const tenantsCount = await prisma.tenant.count({ where: { createdAt: { gte: d, lt: fim } } });
+      const whereNotas = { createdAt: { gte: d, lt: fim }, status: { not: 'rascunho' } };
+      const whereTenants = { createdAt: { gte: d, lt: fim } };
+      if (tenantId) {
+        whereNotas.tenantId = tenantId;
+      } else {
+        whereTenants.status = 'active';
+      }
+      const [count, tenantsCount] = await Promise.all([
+        prisma.invoice.count({ where: whereNotas }),
+        tenantId ? prisma.invoice.count({ where: { ...whereTenants, tenantId } }) : prisma.tenant.count({ where: whereTenants }),
+      ]);
       meses.push({ mes: d.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }), notas: count, novosTenants: tenantsCount });
     }
     res.json(meses);
@@ -263,8 +276,10 @@ async function atualizarUsuario(req, res) {
 
     await prisma.user.update({ where: { id }, data: { status } });
 
-    // Cascade: se um usuário for bloqueado/ativado, refletir no tenant
-    await prisma.tenant.update({ where: { id: user.tenantId }, data: { status } });
+    // Cascade: se um usuário for bloqueado/ativado, refletir no tenant (se houver)
+    if (user.tenantId) {
+      await prisma.tenant.update({ where: { id: user.tenantId }, data: { status } });
+    }
 
     res.json({ success: true, userStatus: status, tenantStatus: status });
   } catch (error) {
