@@ -51,7 +51,7 @@ function carregarCertificado(pfxBuffer, password) {
   }
 
   // node-forge espera DER; se o arquivo for PFX binário, isso funciona diretamente
-  const p12Asn1 = forge.asn1.fromDer(forge.util.createBuffer(pfxBuffer));
+  const p12Asn1 = forge.asn1.fromDer(forge.util.createBuffer(buffer));
   const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, false, password);
 
   let privateKeyPem = null;
@@ -141,8 +141,10 @@ function _assinarElemento(xml, idElemento, credenciais) {
   const sig = _criarAssinatura(privateKeyPem, certPem, idElemento);
 
   // Compute assinatura e inserir após o elemento com Id="idElemento"
+  // Usar prefixo 'dsig' (obrigatório schema_v101 → ref="dsig:Signature")
   sig.computeSignature(xml, {
     location: { reference: `//*[@Id='${idElemento}']`, action: 'after' },
+    prefix: 'dsig',
   });
 
   return sig.getSignedXml();
@@ -284,6 +286,7 @@ async function assinarLote(xml, idRps, idLote, pfxBuffer, password) {
   sig1.signatureAlgorithm = 'http://www.w3.org/2000/09/xmldsig#rsa-sha1';
   sig1.computeSignature(xml, {
     location: { reference: `//*[@Id='${idRps}']`, action: 'after' },
+    prefix: 'dsig',
   });
   const xmlComSig1 = sig1.getSignedXml();
 
@@ -301,6 +304,7 @@ async function assinarLote(xml, idRps, idLote, pfxBuffer, password) {
   sig2.signatureAlgorithm = 'http://www.w3.org/2000/09/xmldsig#rsa-sha1';
   sig2.computeSignature(xmlComSig1, {
     location: { reference: `//*[@Id='${idLote}']`, action: 'after' },
+    prefix: 'dsig',
   });
 
   return sig2.getSignedXml();

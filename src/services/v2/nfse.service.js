@@ -282,10 +282,8 @@ async function gerarNfse(dados, pfxBuffer, password) {
   await _ensureConfig();
   const xml = xmlService.gerarXmlGerarNfse(dados);
 
-  const idElemento = _extrairIdXml(xml);
-  const xmlAssinado = idElemento
-    ? await _assinarXml(xml, idElemento, pfxBuffer, password)
-    : xml;
+  const idElemento = _extrairIdXml(xml) || `dps:${dados.numeroDps || dados.dps?.numero || Date.now()}`;
+  const xmlAssinado = await _assinarXml(xml, idElemento, pfxBuffer, password);
 
   const respostaSoap = await soapService.enviarSoap('GerarNfse', xmlAssinado, pfxBuffer, password);
   const resultado = _parsearResposta(respostaSoap);

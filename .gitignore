@@ -5,3 +5,4 @@ certs/*.p12
 *.log
 
 /src/generated/prisma
+*/xml/*

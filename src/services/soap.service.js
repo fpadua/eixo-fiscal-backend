@@ -238,8 +238,6 @@ async function enviarSoap(operacao, xmlConteudo, pfxBuffer, password) {
   const endpoint = config.endpoint;
   const envelope = _montarEnvelope(metodo, xmlConteudo);
   const soapAction = `${soapActionNamespace}/${metodo}`;
-  const soapEnvelopePath = _salvarXmlAuditoria(`${Date.now()}_${metodo}_soap_envelope.xml`, envelope);
-  lastSoapAudit = { soapEnvelopePath, soapEnvelope: envelope, endpoint, soapAction };
 
   if (config.isMock) {
     console.log(`[MOCK] Operação: ${operacao}`);
@@ -248,7 +246,8 @@ async function enviarSoap(operacao, xmlConteudo, pfxBuffer, password) {
 
   console.log(`[SOAP] Enviando ${operacao} → método ${metodo}`);
   console.log('[SOAP] Envelope (500 chars):', envelope.substring(0, 500));
-  console.log('[SOAP] Envelope salvo em:', soapEnvelopePath);
+  // DEBUG: salvar envelope
+  try { fs.writeFileSync(path.join(XML_STORAGE_DIR, `_soap_envelope_${Date.now()}.xml`), envelope, 'utf8'); } catch(e) {}
 
   try {
     const httpsAgent = pfxBuffer

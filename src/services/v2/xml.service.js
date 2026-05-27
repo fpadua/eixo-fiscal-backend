@@ -582,7 +582,7 @@ function montarDpsObject(dados, includeNamespace = false) {
     serie: serieDps,
     nDPS: numeroDps,
     dCompet: formatarData(dados.dCompet || dados.rps?.competencia || dados.rps?.dataEmissao),
-    tpEmit: String(dados.tpEmit || prestador.tipoInscricaoFederal || '1'),
+    tpEmit: '1',
     cLocEmi: codigoMunicipio,
     ...(dados.subst ? {
       subst: {
