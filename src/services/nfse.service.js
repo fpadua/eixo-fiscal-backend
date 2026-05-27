@@ -25,12 +25,12 @@ const soapService = require('./soap.service');
 const { getConfig } = require('../config/configProvider');
 
 let config = null;
-const _cfgReady = (async () => {
-  config = await getConfig('default-tenant-id');
-})();
+const _cfgReady = async (tenantId) => {
+  config = await getConfig(tenantId || 'default-tenant-id');
+};
 
-async function _ensureConfig() {
-  if (!config) await _cfgReady;
+async function _ensureConfig(tenantId) {
+  if (!config) await _cfgReady(tenantId);
 }
 
 // Parser genérico para respostas SOAP

@@ -6,6 +6,31 @@ const { getConfig } = require('../../config/configProvider');
 const fs = require('fs');
 const path = require('path');
 
+/**
+ * Obtém a configuração NFSe para um tenant específico
+ * @param {string} tenantId - ID do tenant
+ * @param {Object} req - Objeto de requisição (opcional, para obter tenant automaticamente)
+ * @returns {Promise<Object>} Configuração do tenant
+ */
+async function getConfigForTenant(tenantId, req = null) {
+  try {
+    // Se tenantId não for fornecido, tenta obter da requisição
+    if (!tenantId && req) {
+      tenantId = req.tenantId || req.user?.tenantId;
+    }
+    
+    // Se ainda não tiver tenantId, usa o padrão
+    if (!tenantId) {
+      tenantId = 'default-tenant-id';
+    }
+    
+    return await getConfig(tenantId);
+  } catch (error) {
+    console.error(`[NFSE_SERVICE] Erro ao obter configuração para tenant ${tenantId}:`, error);
+    throw new Error(`Falha ao obter configuração do sistema: ${error.message}`);
+  }
+}
+
 let config = null;
 const _cfgReady = (async () => {
   config = await getConfig('default-tenant-id');
