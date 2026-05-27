@@ -13,6 +13,7 @@ const authRoutes = require('./routes/auth.routes');
 const adminRoutes = require('./routes/admin.routes');
 const invoiceRoutes = require('./routes/invoice.routes');
 const planoRoutes = require('./routes/plano.routes');
+const usuarioRoutes = require('./routes/usuario.routes');
 const { tenantMiddleware } = require('./middleware/tenant.middleware');
 const { authMiddleware } = require('./middleware/auth.middleware');
 
@@ -30,6 +31,7 @@ const authLimiter = rateLimit({
   message: { erro: 'Muitas tentativas. Tente novamente em 15 minutos.', code: 'RATE_LIMIT' },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'development',
 });
 
 (async () => {
@@ -98,8 +100,9 @@ const authLimiter = rateLimit({
   app.use('/api/metricas', tenantMiddleware, metricasRoutes);
   app.use('/api/config', tenantMiddleware, uiConfigRoutes);
   app.use('/api/invoices', tenantMiddleware, invoiceRoutes);
-  app.use('/api/planos', tenantMiddleware, planoRoutes);
-  app.use('/api/admin', adminRoutes);
+app.use('/api/planos', tenantMiddleware, planoRoutes);
+app.use('/api/usuarios', tenantMiddleware, usuarioRoutes);
+app.use('/api/admin', adminRoutes);
 
   app.get('/api/testar-conexao', async (_req, res) => {
     const soapService = require('./services/soap.service');

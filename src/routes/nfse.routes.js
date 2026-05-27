@@ -4,7 +4,7 @@ const ctrlV2 = require('../controllers/v2/nfse.controller');
 const soapService = require('../services/soap.service');
 const xmlService = require('../services/xml.service');
 const signService = require('../services/sign.service');
-const { planGuard } = require('../middleware/plan.middleware');
+const { planGuard, requirePermissao } = require('../middleware/plan.middleware');
 const { authMiddleware } = require('../middleware/auth.middleware');
 
 const router = Router();
@@ -149,25 +149,25 @@ router.post('/testar-endpoint', async (req, res) => {
 });
 
 // ─── Consulta ────────────────────────────────────────────────────────────────
-router.get('/consultar/rps/:numero', ctrlV1.consultarPorRps);
-router.get('/consultar/faixa', ctrlV1.consultarPorFaixa);
+router.get('/consultar/rps/:numero', requirePermissao('consultar_status'), ctrlV1.consultarPorRps);
+router.get('/consultar/faixa', requirePermissao('consultar_status'), ctrlV1.consultarPorFaixa);
 
 // Consulta SITUAÇÃO de lote (ConsultarSituacaoLoteRps)
-router.get('/consultar/lote/situacao/:protocolo', ctrlV1.consultarSituacaoLote);
+router.get('/consultar/lote/situacao/:protocolo', requirePermissao('consultar_status'), ctrlV1.consultarSituacaoLote);
 // Compat: frontend legado v1 usa /consultar/situacao-lote/:protocolo
-router.get('/consultar/situacao-lote/:protocolo', ctrlV1.consultarSituacaoLote);
+router.get('/consultar/situacao-lote/:protocolo', requirePermissao('consultar_status'), ctrlV1.consultarSituacaoLote);
 
 // Consulta COMPLETA de lote (ConsultarLoteRps)
-router.get('/consultar/lote/:protocolo', ctrlV1.consultarLoteRps);
+router.get('/consultar/lote/:protocolo', requirePermissao('consultar_status'), ctrlV1.consultarLoteRps);
 
 // Consulta serviços prestados/tomados
-router.get('/consultar/prestados', ctrlV1.consultarServicosPrestados);
-router.get('/consultar/tomados', ctrlV1.consultarServicosTomados);
-router.get('/dados-cadastrais', ctrlV1.consultarDadosCadastrais);
+router.get('/consultar/prestados', requirePermissao('consultar_status'), ctrlV1.consultarServicosPrestados);
+router.get('/consultar/tomados', requirePermissao('consultar_status'), ctrlV1.consultarServicosTomados);
+router.get('/dados-cadastrais', requirePermissao('consultar_status'), ctrlV1.consultarDadosCadastrais);
 
 // ─── Cancelamento / Substituição ────────────────────────────────────────────
-router.post('/cancelar', ctrlV1.cancelar);
-router.post('/substituir', ctrlV1.substituir);
+router.post('/cancelar', requirePermissao('cancelar_substituir'), ctrlV1.cancelar);
+router.post('/substituir', requirePermissao('cancelar_substituir'), ctrlV1.substituir);
 
 // Rota para salvar XML gerado em homologação
 router.post('/homolog/xml', async (req, res) => {

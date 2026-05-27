@@ -8,12 +8,51 @@ async function main() {
   console.log('[SEED] Iniciando criação de dados padrão...\n');
 
   // 1. Planos
+  const permissoesFree = {
+    emitir_nfse: true,
+    duplicar_nfse: false,
+    rascunho: false,
+    clientes: false,
+    minhas_notas: true,
+    consultar_status: false,
+    cancelar_substituir: false,
+    configuracoes: false,
+    gerenciar_usuarios: false,
+    meu_plano: false,
+  };
+
+  const permissoesBasic = {
+    emitir_nfse: true,
+    duplicar_nfse: true,
+    rascunho: true,
+    clientes: true,
+    minhas_notas: true,
+    consultar_status: false,
+    cancelar_substituir: false,
+    configuracoes: true,
+    gerenciar_usuarios: false,
+    meu_plano: false,
+  };
+
+  const permissoesFull = {
+    emitir_nfse: true,
+    duplicar_nfse: true,
+    rascunho: true,
+    clientes: true,
+    minhas_notas: true,
+    consultar_status: true,
+    cancelar_substituir: true,
+    configuracoes: true,
+    gerenciar_usuarios: true,
+    meu_plano: true,
+  };
+
   const planos = [
-    { nome: 'Free', slug: 'free', precoMensal: 0, limiteNotas: 10, maxUsuarios: 1, features: ['emitir_nfse'] },
-    { nome: 'Basic', slug: 'basic', precoMensal: 49.90, limiteNotas: 100, maxUsuarios: 2, features: ['emitir_nfse'] },
-    { nome: 'Pro', slug: 'pro', precoMensal: 99.90, limiteNotas: 1000, maxUsuarios: 5, features: ['emitir_nfse', 'modulo_financeiro'] },
-    { nome: 'Premium', slug: 'premium', precoMensal: 297, limiteNotas: 5000, maxUsuarios: 10, features: ['emitir_nfse', 'modulo_financeiro', 'api_integracao'] },
-    { nome: 'Enterprise', slug: 'enterprise', precoMensal: 0, limiteNotas: 0, maxUsuarios: 999, features: ['emitir_nfse', 'modulo_financeiro', 'api_integracao', 'suporte_prioritario'] },
+    { nome: 'Free', slug: 'free', precoMensal: 0, limiteNotas: 10, maxUsuarios: 1, features: ['emitir_nfse'], permissoes: permissoesFree },
+    { nome: 'Basic', slug: 'basic', precoMensal: 49.90, limiteNotas: 100, maxUsuarios: 2, features: ['emitir_nfse'], permissoes: permissoesBasic },
+    { nome: 'Pro', slug: 'pro', precoMensal: 99.90, limiteNotas: 1000, maxUsuarios: 5, features: ['emitir_nfse', 'modulo_financeiro'], permissoes: permissoesFull },
+    { nome: 'Premium', slug: 'premium', precoMensal: 297, limiteNotas: 5000, maxUsuarios: 10, features: ['emitir_nfse', 'modulo_financeiro', 'api_integracao'], permissoes: permissoesFull },
+    { nome: 'Enterprise', slug: 'enterprise', precoMensal: 0, limiteNotas: 0, maxUsuarios: 999, features: ['emitir_nfse', 'modulo_financeiro', 'api_integracao', 'suporte_prioritario'], permissoes: permissoesFull },
   ];
 
   for (const p of planos) {

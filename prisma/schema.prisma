@@ -43,6 +43,7 @@ model Plan {
   limiteNotas   Int      @default(0)
   maxUsuarios   Int      @default(1)
   features      Json     @default("[]")
+  permissoes    Json     @default("{}")
   ativo         Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

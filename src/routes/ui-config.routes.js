@@ -3,11 +3,13 @@ const multer = require('multer');
 const ctrl = require('../controllers/ui-config.controller');
 const companyCtrl = require('../controllers/company.controller');
 const { authMiddleware } = require('../middleware/auth.middleware');
+const { requirePermissao } = require('../middleware/plan.middleware');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const router = Router();
 
 router.use(authMiddleware);
+router.use(requirePermissao('configuracoes'));
 
 router.get('/nfse-ui', ctrl.getConfig);
 router.put('/nfse-ui', ctrl.updateConfig);

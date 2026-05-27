@@ -92,6 +92,20 @@ class AuthService {
       return { success: false, error: 'Não foi possível completar o cadastro.' };
     }
 
+    if (this.tenantId) {
+      const prisma = require('../../lib/prisma');
+      const tenant = await prisma.tenant.findUnique({
+        where: { id: this.tenantId },
+        include: { plan: true, _count: { select: { users: { where: { status: 'active' } } } } },
+      });
+
+      if (tenant?.plan && tenant.plan.maxUsuarios > 0) {
+        if (tenant._count.users >= tenant.plan.maxUsuarios) {
+          return { success: false, error: `Limite de ${tenant.plan.maxUsuarios} usuários do plano atingido.` };
+        }
+      }
+    }
+
     // Criar usuário com status 'pending' — precisa verificar email
     const user = await this.userRepository.create({
       ...data,

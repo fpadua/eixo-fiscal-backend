@@ -75,14 +75,17 @@ async function planStatus(req, res) {
 
     res.json({
       hasPlan: true,
+      planId: plan.id,
       planName: plan.nome,
       planSlug: plan.slug,
       limiteNotas: limite,
+      maxUsuarios: plan.maxUsuarios,
       notasEmitidas: notasMes,
       percentual,
       excedido,
       planStatus: tenant.planStatus,
       proximoLimite: limite > 0 && notasMes >= Math.floor(limite * 0.8),
+      permissoes: plan.permissoes || {},
     });
   } catch (error) {
     console.error('[INVOICE] Plan status error:', error);

@@ -35,4 +35,33 @@ async function planGuard(req, res, next) {
   }
 }
 
-module.exports = { planGuard };
+function requirePermissao(permissao) {
+  return async (req, res, next) => {
+    try {
+      const tenantId = req.tenantId || 'default-tenant-id';
+
+      const tenant = await prisma.tenant.findUnique({
+        where: { id: tenantId },
+        include: { plan: true },
+      });
+
+      const permissoes = tenant?.plan?.permissoes || {};
+
+      if (permissoes[permissao] !== true) {
+        return res.status(403).json({
+          erro: 'Seu plano não tem permissão para esta funcionalidade',
+          code: 'PLAN_PERMISSION_DENIED',
+          permissao,
+          plano: tenant?.plan?.nome || 'Sem plano',
+        });
+      }
+
+      next();
+    } catch (error) {
+      console.error('[REQUIRE_PERMISSAO] Error:', error);
+      next();
+    }
+  };
+}
+
+module.exports = { planGuard, requirePermissao };
