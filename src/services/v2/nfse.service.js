@@ -296,19 +296,22 @@ function _extrairIdXml(xml) {
   return match ? match[1] : null;
 }
 
+const SIGN_OPTIONS_NACIONAL = {};
+
 async function _assinarXml(xml, idElemento, pfxBuffer, password) {
   if (pfxBuffer) {
-    return signService.assinar(xml, idElemento, pfxBuffer, password);
+    return signService.assinar(xml, idElemento, pfxBuffer, password, SIGN_OPTIONS_NACIONAL);
   }
-  return signService.assinar(xml, idElemento);
+  return signService.assinar(xml, idElemento, null, null, SIGN_OPTIONS_NACIONAL);
 }
 
 async function gerarNfse(dados, pfxBuffer, password) {
   await _ensureConfig();
-  const xml = xmlService.gerarXmlGerarNfse(dados);
-
-  const idElemento = _extrairIdXml(xml) || `dps:${dados.numeroDps || dados.dps?.numero || Date.now()}`;
-  const xmlAssinado = await _assinarXml(xml, idElemento, pfxBuffer, password);
+  const payload = dados.dps || dados;
+  const xmlDps = xmlService.gerarXmlDpsCompacto(payload);
+  const idElemento = _extrairIdXml(xmlDps) || `dps:${payload.numeroDps || payload.nDPS || Date.now()}`;
+  const dpsAssinado = await _assinarXml(xmlDps, idElemento, pfxBuffer, password);
+  const xmlAssinado = xmlService.envolverGerarNfseEnvio(dpsAssinado);
 
   const respostaSoap = await soapService.enviarSoap('GerarNfse', xmlAssinado, pfxBuffer, password);
   const resultado = _parsearResposta(respostaSoap);

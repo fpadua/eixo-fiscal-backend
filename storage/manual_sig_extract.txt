@@ -1,0 +1,241 @@
+===== PAGE 21 =====
+  Página 20 de 108 
+ 
+ 
+Versão 1.01 – Revisada em 17/03/2026  
+XML de Envio é validado pelo elemento do schema do arquivo nfse.xsd: ConsultarDpsDisponivelEnvio 
+XML de Resposta é validado pelo elemento do schema do arquivo nfse.xsd: ConsultarDpsDisponivelResposta  
+Passos para execução: 
+1. A aplicação acessa o serviço de “Consulta DPS Disponível” e submete os dados para processamento 
+(fluxo “2.b”); 
+2. A requisição é recebida pelo servidor do Web Service, que verifica os dados preenchidos e identifica as 
+DPS correspondentes (fluxos “2.c” e “2.d”); 
+3. O Web Service retorna uma mensagem com o resultado do processamento do serviço (fluxos “2.e”); 
+4. Cada página consultada listará o limite de 50 DPS. Caso a quantidade de DPS seja superior ao limite, a 
+próxima página deve ser consultada. 
+7.2.12. Consulta URL NFS-e 
+Esse serviço permite a obtenção dos links para visualização e verificação de autenticidade de NFS-e já 
+geradas. 
+ 
+XML de Envio é validado pelo elemento do schema do arquivo nfse.xsd: ConsultarUrlNfseEnvio 
+XML de Resposta é validado pelo elemento do schema do arquivo nfse.xsd: ConsultarUrlNfseResposta  
+Passos para execução: 
+4. A aplicação acessa o serviço de “Consulta URL NFS-e” e submete os dados para processamento (fluxo 
+“2.b”); 
+5. A requisição é recebida pelo servidor do Web Service, que verifica os dados preenchidos e identifica as 
+NFS-e correspondentes (fluxos “2.c” e “2.d”); 
+6. O Web Service retorna uma mensagem com o resultado do processamento do serviço (fluxos “2.e”); 
+7. Cada página consultada listará o limite de 50 NFS-e. Caso a quantidade de NFS-e seja superior ao limite, 
+a próxima página deve ser consultada.  
+
+===== PAGE 22 =====
+  Página 21 de 108 
+ 
+ 
+Versão 1.01 – Revisada em 17/03/2026 7.3. Padrões Técnicos 
+7.3.1. Padrão de Comunicação 
+ 
+O meio físico de comunicação utilizado entre os sistemas de informação dos contribuintes e o Sistema de 
+Notas Fiscais de Serviço Eletrônicas das Administrações Tributárias Municipais será a Internet, com o uso do 
+protocolo SSL, que além de garantir um duto de comunicação seguro na Internet, permite a identificação do 
+servidor e do cliente com a utilização de certificados digitais, eliminando a necessidade de identificação do usuário 
+com a utilização de nome ou código de usuário e senha. 
+O modelo de comunicação segue o padrão de Web Services definido pelo WS-I Basic Profile. 
+A troca de mensagens entre o Web Service do Sistema de Notas Fiscais de Serviço Eletrônicas das 
+Administrações Tributárias Municipais e o sistema do contribuinte será realizada no padrão SOAP, com troca de 
+mensagens XML no padrão Style/Enconding: Document/Literal, wrapped. A opção “wrapped” representa a 
+chamada aos métodos disponíveis com a passagem de mais de um parâmetro. Para descrever os serviços 
+disponibilizados, será utilizado um documento WSDL (Web Service Description Language). O WSDL é o padrão 
+recomendado para descrição de serviços SOAP. 
+ 
+As chamadas aos serviços serão feitas enviando como parâmetro um documento XML a ser processado 
+pelo sistema. Esse documento não fará parte da descrição do serviço (arquivo WSDL), e o formato do XML 
+correspondente ao serviço está definido neste manual de integração, seção 4.5. 
+
+===== PAGE 23 =====
+  Página 22 de 108 
+ 
+ 
+Versão 1.01 – Revisada em 17/03/2026 7.3.2. Padrão de Certificado Digital  
+Os certificados digitais utilizados no sistema de Notas Fiscais de Serviço Eletrônicas 
+das Administrações Tributárias Municipais, serão emitidos por Autoridade Certificadora 
+credenciada pela Infraestrutura de Chaves Públicas Brasileira – ICP-Brasil, de pessoa física 
+ou jurídica, dos tipos A1 ou A3. 
+Para a assinatura digital dos documentos envolvidos aceitar-se-á que o certificado 
+digital seja de quaisquer dos estabelecimentos da empresa. 
+Os certificados digitais serão exigidos em 2 (dois) momentos distintos para a integração 
+entre o sistema do contribuinte e o Web Service das Administrações Públicas Municipais: 
+ Assinatura de Mensagens: O certificado digital utilizado para essa função deverá conter o CNPJ do 
+estabelecimento emissor da NFS-e ou o CNPJ do estabelecimento matriz ou CPF quando o prestador de 
+serviços for pessoa física. O certificado digital deverá ter o “uso da chave” previsto para a função de 
+assinatura digital, respeitando a Política do Certificado. 
+ Transmissão (durante a transmissão das mensagens entre os servidores do contribuinte e os serviços 
+disponibilizados pelas Administrações Públicas Municipais). O certificado digital utilizado para 
+identificação do aplicativo do contribuinte deverá conter o CNPJ do responsável pela transmissão das 
+mensagens, mas não necessita ser o mesmo CNPJ do estabelecimento ou CPF, quando o prestador de 
+serviços for pessoa física, emissor da NFS-e, devendo ter a extensão extended Key Usage com 
+permissão de "Autenticação Cliente". 
+7.3.3. Padrão de Assinatura Digital  
+As mensagens enviadas aos serviços disponibilizados pelas Administrações Tributárias Municipais são 
+documentos eletrônicos elaborados no padrão XML e devem ser assinados digitalmente com um certificado digital 
+que contenha o CNPJ do estabelecimento matriz ou o CNPJ do estabelecimento ou o CPF do prestador de 
+serviços emissor da NFS-e objeto do pedido. 
+Para garantir minimamente a integridade das informações prestadas e a correta formação dos arquivos XML, 
+o contribuinte deverá submeter as mensagens XML para validação pela linguagem de Schema do XML (XSD – 
+XML Schema Definition), disponibilizada pelas Administrações Tributárias Municipais antes de seu envio. 
+Os elementos abaixo estão presentes dentro do certificado do contribuinte tornando desnecessária a sua 
+representação individualizada no arquivo XML. Portanto, o arquivo XML não deve conter os elementos: 
+<X509SubjectName> 
+<X509IssuerSerial> 
+<X509IssuerName> 
+<X509SerialNumber> 
+<X509SKI>   
+Deve-se evitar o uso das TAGs abaixo, pois as informações serão obtidas a partir do certificado do emitente: 
+<KeyValue> 
+<RSAKeyValue> 
+<Modulus> 
+<Exponent>  
+O Projeto NFS-e utiliza um subconjunto do padrão de assinatura XML definido pelo 
+http://www.w3.org/TR/xmldsig-core/, que tem o seguinte leiaute: 
+# Campo Elemento  Pai Tipo Ocorrência  Descrição 
+XS01 Signature Raiz      
+XS02 Id A XS01  C 1-1   
+XS03 SignedInfo G XS01   1-1 Grupo da Informação da assinatura 
+XS04 CanonicalizationMethod G XS03   1-1 Grupo do Método de Canonicalização 
+
+===== PAGE 24 =====
+  Página 23 de 108 
+ 
+ 
+Versão 1.01 – Revisada em 17/03/2026 XS05 Algorithm A XS04  C 1-1 Atributo Algorithm de CanonicalizationMethod:   
+http://www.w3.org/TR/2001/REC -xml-c14n- 20010315  
+XS06 SignatureMethod G XS03   1-1 Grupo do Método de Assinatura 
+XS07 Algorithm A XS06  C 1-1 Atributo Algorithm de SignedInfo:   
+http://www.w3.org/2000/09/xmldsig#rsa -sha1  
+XS08 Reference G XS03   1-1 Grupo do Método de Reference 
+XS09 URI A XS08  C 1-1 Atributo URI da tag Reference 
+XS10 Transforms G XS08   1-1 Grupo do algorithm de Transform 
+XS11 Unique_Transf_Alg RC XS10   1-1 Regra para o atributo Algorithm do Transform ser único 
+XS12 Transform G XS10   2-2 Grupo de Transform 
+XS13 Algorithm A XS12  C 1-1 Atributos válidos Algorithm do Transform:   
+http://www.w3.org/TR/2001/REC-xml-c14n- 20010315 
+http://www.w3.org/2000/09/xmldsig#enveloped -signature  
+XS14 Xpath E XS12  C 0-N Xpath 
+XS15 DigestMethod G XS08   1-1 Grupo do Método de DigestMethod 
+XS16 Algorithm A XS15  C 1-1 Atributo Algorithm de DigestMethod:   
+http://www.w3.org/2000/09/xmldsig#sha1  
+XS17 DigestValue E XS08  C 1 Digest Value (Hash SHA-1 – Base64) 
+XS18 SignatureValue G XS01   1-1 Grupo do Signature Value 
+XS19 KeyInfo G XS01   1-1 Grupo do KeyInfo 
+XS20 X509Data G XS19   1-1 Grupo X509 
+XS21 X509Certificate E XS20  C 1-1 Certificado Digital x509 em Base64b 
+ 
+Observação: 
+As DPS’s e lote devem ser assinados conforme os seguintes passos:  
+1. Assinatura do DPS isoladamente → neste momento deve ser identificado o namespace 
+(http://www.sped.fazenda.gov.br/nfse ) em cada DPS que será assinado 
+2. Agrupar todos os DPS assinados em um único lote 
+3. Assinar o lote com os DPS's, também identificando o namespace http://www.sped.fazenda.gov.br/nfse  
+7.3.4. Validação de Assinatura Digital pelo Sistema NFS-e  
+Para a validação da assinatura digital, seguem as regras que serão adotadas pelas Administrações Tributárias 
+Municipais: 
+1. Extrair a chave pública do certificado; 
+2. Verificar o prazo de validade do certificado utilizado; 
+3. Montar e validar a cadeia de confiança dos certificados validando também a LCR (Lista de Certificados 
+Revogados) de cada certificado da cadeia; 
+4. Validar o uso da chave utilizada (Assinatura Digital) de tal forma a aceitar certificados somente do tipo A 
+(não serão aceitos certificados do tipo S); 
+5. Garantir que o certificado utilizado é de um usuário final e não de uma Autoridade Certificadora; 
+6. Adotar as regras definidas pelo RFC 3280 para LCRs e cadeia de confiança; 
+7. Validar a integridade de todas as LCR utilizadas pelo sistema; 
+8. Prazo de validade de cada LCR utilizada (verificar data inicial e final). 
+A forma de conferência da LCR fica a critério de cada Administração Tributária Municipal, podendo ser feita 
+de 2 (duas) maneiras: Online ou Download periódico. As assinaturas digitais das mensagens serão verificadas 
+considerando o horário fornecido pelo Observatório Nacional. 
+===== PAGE 25 =====
+  Página 24 de 108 
+ 
+ 
+Versão 1.01 – Revisada em 17/03/2026 7.3.5. Uso de Assinatura com Certificado Digital  
+Para garantir a autenticidade dos dados gerados, algumas informações poderão ser assinadas digitalmente, 
+conforme determinação Administração Tributária Municipal. As informações que poderão ser assinadas e quem 
+deverá fazê-lo em cada momento são: 
+ A DPS, pelo contribuinte, antes do envio do Lote de DPS que o contenha; 
+ O Lote de DPS, pelo contribuinte, antes do seu envio; 
+ A NFS-e e seus Eventos: 
+• Pela Administração Tributária Municipal e pelo contribuinte, quando gerada pela Aplicação Online; 
+• Pela Administração Tributária Municipal nos demais casos; 
+7.4. Padrão das Mensagens XML 
+A especificação adotada para as mensagens XML é a recomendação W3C para XML 1.0, disponível em 
+www.w3.org/TR/REC-xml e a codificação dos caracteres será em UTF-8. 
+As chamadas dos Web Services disponibilizados Administrações Tributárias Municipais e os respectivos 
+resultados do processamento são realizadas com utilização de mensagens com o seguinte padrão: 
+ Área de Cabeçalho  – estrutura XML padrão para todas as mensagens de chamada e retorno de 
+resultado dos Web Services disponibilizados pelas Administrações Tributárias Municipais, que contêm os 
+dados de controle da mensagem. A área de cabeçalho está sendo utilizada para armazenar a versão do 
+leiaute da estrutura XML informada na área de dados 
+ Área de Dados  – estrutura XML variável definida na documentação do Web Service acessado. 
+7.4.1. Área do Cabeçalho 
+Leiaute da Área de Cabeçalho padrão: 
+# Nome Elemento  Pai Tipo Ocorrência  Tamanho  Descrição 
+1 cabecalho G     1-1   TAG raiz do cabeçalho da mensagem. 
+  Versão A 1 N 1-1 4  Versão do leiaute. 
+2 versaoDados E 1 N 1-1 4  O conteúdo deste campo indica a versão do leiaute 
+XML da estrutura XML informada na área de dados da 
+mensagem. 
+ 
+O campo versaoDados deve conter a informação da versão do leiaute da estrutura XML armazenada na área 
+de dados da mensagem. 
+A estrutura XML armazenada na área de dados está definida na documentação do Web Service acessado. 
+7.4.2. Validação da Estrutura das Mensagens XML 
+Para garantir minimamente a integridade das informações prestadas e a correta formação das mensagens 
+XML, o contribuinte deverá submeter cada uma das mensagens XML de pedido de serviço para validação pelo 
+seu respectivo arquivo XSD (XML Schema Definition, definição de esquemas XML) antes de seu envio. Neste 
+manual utilizaremos a nomenclatura Schema XML para nos referir a arquivo XSD. 
+Um Schema XML define o conteúdo de uma mensagem XML, descrevendo os seus atributos, seus elementos 
+e a sua organização, além de estabelecer regras de preenchimento de conteúdo e de obrigatoriedade de cada 
+elemento ou grupo de informação. 
+===== PAGE 26 =====
+  Página 25 de 108 
+ 
+ 
+Versão 1.01 – Revisada em 17/03/2026 A validação da estrutura da mensagem XML é realizada por um analisador sintático (parser) que verifica se a 
+mensagem XML atende às definições e regras de seu respectivo Schema XML. 
+Qualquer divergência da estrutura da mensagem XML em relação ao seu respectivo Schema XML, provoca 
+um erro de validação do Schema XML. Neste caso o conteúdo da mensagem XML de pedido do serviço não 
+poderá ser processado. 
+A primeira condição para que a mensagem XML seja validada com sucesso é que ela seja submetida ao 
+Schema XML correto. 
+Assim, os sistemas de informação dos contribuintes devem estar preparados para gerar mensagens XML em 
+seus respectivos Schemas XML em vigor. 
+7.4.3. Schemas XML (arquivos XSD) 
+O Schema XML (arquivo XSD) correspondente a cada uma das mensagens XML de pedido e de retorno 
+utilizadas pelo Web Service pode ser obtido através do endereço eletrônico 
+https://www.notacontrol.com.br/download/nfse/schema_v101.xsd . 
+7.4.4. Versão dos Schemas XML 
+Toda mudança de layout das mensagens XML do Web Service implica a atualização do seu respectivo 
+Schema XML.   
+A identificação da versão dos Schemas XML será realizada com o acréscimo do número da versão com dois 
+dígitos no nome do arquivo XSD precedida da literal ‘_v’, como segue: 
+<Nome do Arquivo>_v<Número da Versão>.xsd  
+Exemplo: schema_v101.xsd  
+A maioria dos Schemas XML definidos para a utilização do Web Service do Sistema de Notas Fiscais de 
+Serviço Eletrônicas das Administrações Tributárias Municipais utilizam as definições de tipos simples ou tipos 
+complexos que estão definidos em outros Schemas XML. Nesses casos, a modificação de versão do Schema 
+básico será repercutida no Schema principal. 
+As modificações de layout das mensagens XML do Web Service podem ser causadas por necessidades 
+técnicas ou em razão da modificação de alguma legislação. As modificações decorrentes de alteração da 
+legislação deverão ser implementadas nos prazos previstos no ato normativo que introduziu a alteração. As 
+modificações de ordem técnica serão divulgadas pelas Administrações Tributárias Municipais e ocorrerão sempre 
+que se fizerem necessárias. 
+ 
+8. ESTRUTURA DE DADOS 
+8.1. Formatos e Padrões Utilizados 
+Formatações de dados que devem ser seguidas para geração correta na estrutura dos arquivos: 
+Formato  Observação  
+Data (date) Formato: AAAA-MM-DD onde: 
+AAAA = ano com 4 caracteres MM = mês com 2 caracteres DD = dia com 2 caracteres 
+Data/Hora 
+(datetime) Formato AAAA-MM-DDTHH:mm:ss onde: 
+AAAA = ano com 4 caracteres MM = mês com 2 caracteres DD = dia com 2 caracteres 
+T = caractere de formatação que deve existir separando a data da hora HH = hora com 2 

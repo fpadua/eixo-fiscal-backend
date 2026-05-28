@@ -18,6 +18,14 @@ const builder = new XMLBuilder({
   suppressEmptyNode: true,
 });
 
+/** XML compacto (sem indentação) exigido para assinatura da DPS — manual NFS-e Nacional */
+const builderCompact = new XMLBuilder({
+  ignoreAttributes: false,
+  attributeNamePrefix: '@_',
+  format: false,
+  suppressEmptyNode: true,
+});
+
 const NS_NFSE = 'http://www.sped.fazenda.gov.br/nfse';
 const NS_DS = 'http://www.w3.org/2000/09/xmldsig#';
 const VERSAO_SCHEMA_NACIONAL = '1.01';
@@ -621,7 +629,6 @@ function montarDpsObject(dados, includeNamespace = false) {
 
   if (includeNamespace) {
     dps['@_xmlns'] = NS_NFSE;
-    dps['@_xmlns:dsig'] = NS_DS;
   }
 
   return { DPS: dps };
@@ -629,6 +636,15 @@ function montarDpsObject(dados, includeNamespace = false) {
 
 function gerarXmlDps(dados) {
   return builder.build(montarDpsObject(dados, true));
+}
+
+function gerarXmlDpsCompacto(dados) {
+  return builderCompact.build(montarDpsObject(dados, true));
+}
+
+function envolverGerarNfseEnvio(dpsXml) {
+  const inner = removerDeclaracaoXml(dpsXml);
+  return `<?xml version="1.0" encoding="UTF-8"?><GerarNfseEnvio xmlns="${NS_NFSE}">${inner}</GerarNfseEnvio>`;
 }
 
 function removerDeclaracaoXml(xml) {
@@ -666,15 +682,7 @@ function gerarXmlLoteDps(listaDps, numeroLote, cnpjPrestador, inscricaoMunicipal
 
 function gerarXmlGerarNfse(dados) {
   const dps = dados.dps || dados;
-  const xmlObj = {
-    GerarNfseEnvio: {
-      '@_xmlns': NS_NFSE,
-      '@_xmlns:dsig': NS_DS,
-      DPS: montarDpsObject(dps, false).DPS,
-    },
-  };
-
-  return `<?xml version="1.0" encoding="UTF-8"?>\n${builder.build(xmlObj)}`;
+  return envolverGerarNfseEnvio(gerarXmlDpsCompacto(dps));
 }
 
 function gerarXmlEnviarLoteDpsSincrono(listaDps, numeroLote) {
@@ -929,6 +937,8 @@ function gerarXmlConsultaDpsDisponivel(cnpjPrestador, inscricaoMunicipal, pagina
 
 module.exports = {
   gerarXmlDps,
+  gerarXmlDpsCompacto,
+  envolverGerarNfseEnvio,
   gerarXmlLoteDps,
   gerarXmlGerarNfse,
   gerarXmlEnviarLoteDpsSincrono,

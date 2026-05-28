@@ -38,6 +38,47 @@ async function _ensureConfig() {
  * @param {string} [password] - Senha do certificado
  * @returns {{ privateKeyPem: string, certPem: string }}
  */
+function _extrairCredenciaisDoPfx(buffer, pfxPwd) {
+  const p12Asn1 = forge.asn1.fromDer(forge.util.createBuffer(buffer));
+  const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, false, pfxPwd || '');
+
+  let privateKey = null;
+  let privateKeyPem = null;
+  const allCerts = [];
+
+  for (const safeContent of p12.safeContents) {
+    for (const safeBag of safeContent.safeBags) {
+      if (safeBag.type === forge.pki.oids.pkcs8ShroudedKeyBag && safeBag.key) {
+        privateKey = safeBag.key;
+        privateKeyPem = forge.pki.privateKeyToPem(safeBag.key);
+      }
+      if (safeBag.type === forge.pki.oids.certBag && safeBag.cert) {
+        allCerts.push(safeBag.cert);
+      }
+    }
+  }
+
+  if (!privateKey || allCerts.length === 0) {
+    throw new Error('Não foi possível extrair chave privada ou certificado do arquivo .pfx');
+  }
+
+  const pubPemFromPrivate = forge.pki.publicKeyToPem(
+    forge.pki.rsa.setPublicKey(privateKey.n, privateKey.e)
+  );
+
+  let titularCert = allCerts.find(
+    (cert) => forge.pki.publicKeyToPem(cert.publicKey) === pubPemFromPrivate
+  );
+  if (!titularCert) {
+    titularCert = allCerts[0];
+  }
+
+  return {
+    privateKeyPem,
+    certPem: forge.pki.certificateToPem(titularCert),
+  };
+}
+
 function carregarCertificado(pfxBuffer, password) {
   const pfxPath = config.cert?.path;
   const pfxPwd = password || config.cert?.password;
@@ -50,47 +91,19 @@ function carregarCertificado(pfxBuffer, password) {
     buffer = fs.readFileSync(pfxPath);
   }
 
-  // node-forge espera DER; se o arquivo for PFX binário, isso funciona diretamente
-  const p12Asn1 = forge.asn1.fromDer(forge.util.createBuffer(buffer));
-  const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, false, password);
-
-  let privateKeyPem = null;
-  let certPem = null;
-
-  for (const safeContent of p12.safeContents) {
-    for (const safeBag of safeContent.safeBags) {
-      // Chave privada (PKCS#8 protegida)
-      if (safeBag.type === forge.pki.oids.pkcs8ShroudedKeyBag && safeBag.key) {
-        privateKeyPem = forge.pki.privateKeyToPem(safeBag.key);
-      }
-      // Certificado (cadeia x509)
-      if (safeBag.type === forge.pki.oids.certBag && safeBag.cert) {
-        const pem = forge.pki.certificateToPem(safeBag.cert);
-        // Primeiro certificado encontrado é o do titular
-        if (!certPem) {
-          certPem = pem;
-        }
-      }
-    }
-  }
-
-  if (!privateKeyPem || !certPem) {
-    throw new Error('Não foi possível extrair chave privada ou certificado do arquivo .pfx');
-  }
-
-  return { privateKeyPem, certPem };
+  return _extrairCredenciaisDoPfx(buffer, pfxPwd);
 }
 
 /**
- * Monta o objeto SignedXml configurado conforme ABRASF 2.04.
+ * Monta o objeto SignedXml conforme manual NFS-e Nacional v1.01 (seção 7.3.3, tabela XS).
  *
- * Padrão de assinatura (manual p.26, tabela XS):
+ * Padrão de assinatura:
  *  - CanonicalizationMethod Algorithm:
  *      http://www.w3.org/TR/2001/REC-xml-c14n-20010315
  *  - SignatureMethod Algorithm:
- *      http://www.w3.org/2001/04/xmldsig-more#rsa-sha256
+ *      http://www.w3.org/2000/09/xmldsig#rsa-sha1
  *  - DigestMethod Algorithm:
- *      http://www.w3.org/2001/04/xmlenc#sha256
+ *      http://www.w3.org/2000/09/xmldsig#sha1
  *  - Transforms:
  *      - http://www.w3.org/2000/09/xmldsig#enveloped-signature
  *      - http://www.w3.org/TR/2001/REC-xml-c14n-20010315
@@ -116,13 +129,13 @@ function _criarAssinatura(privateKeyPem, certPem, idElemento) {
       'http://www.w3.org/2000/09/xmldsig#enveloped-signature',
       'http://www.w3.org/TR/2001/REC-xml-c14n-20010315',
     ],
-    digestAlgorithm: 'http://www.w3.org/2001/04/xmlenc#sha256',
+    digestAlgorithm: 'http://www.w3.org/2000/09/xmldsig#sha1',
   });
 
   sig.canonicalizationAlgorithm =
     'http://www.w3.org/TR/2001/REC-xml-c14n-20010315';
   sig.signatureAlgorithm =
-    'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256';
+    'http://www.w3.org/2000/09/xmldsig#rsa-sha1';
 
   return sig;
 }
@@ -135,17 +148,20 @@ function _criarAssinatura(privateKeyPem, certPem, idElemento) {
  * @param {{ privateKeyPem: string, certPem: string }} credenciais
  * @returns {string} XML assinado
  */
-function _assinarElemento(xml, idElemento, credenciais) {
+function _assinarElemento(xml, idElemento, credenciais, options = {}) {
   const { privateKeyPem, certPem } = credenciais;
+  const safeId = String(idElemento).replace(/[^a-zA-Z0-9:-]/g, '');
+  const sig = _criarAssinatura(privateKeyPem, certPem, safeId);
 
-  const sig = _criarAssinatura(privateKeyPem, certPem, idElemento);
+  const computeOptions = {
+    location: { reference: `//*[@Id='${safeId}']`, action: 'after' },
+  };
+  // NFS-e Nacional v1.01: vedado prefixo de namespace na assinatura (manual 8.1 / declaração namespace)
+  if (options.prefix) {
+    computeOptions.prefix = options.prefix;
+  }
 
-  // Compute assinatura e inserir após o elemento com Id="idElemento"
-  // Usar prefixo 'dsig' (obrigatório schema_v101 → ref="dsig:Signature")
-  sig.computeSignature(xml, {
-    location: { reference: `//*[@Id='${idElemento}']`, action: 'after' },
-    prefix: 'dsig',
-  });
+  sig.computeSignature(xml, computeOptions);
 
   return sig.getSignedXml();
 }
@@ -165,7 +181,7 @@ function _assinarElemento(xml, idElemento, credenciais) {
  * @param {string[]} ids - array de Ids na ordem em que devem ser assinados
  * @returns {string} XML assinado
  */
-function assinarMultiplosElementos(xml, ids, pfxBuffer, password) {
+function assinarMultiplosElementos(xml, ids, pfxBuffer, password, options = {}) {
   if (!ids || !Array.isArray(ids) || ids.length === 0) {
     throw new Error('Nenhum Id informado para assinatura.');
   }
@@ -174,7 +190,7 @@ function assinarMultiplosElementos(xml, ids, pfxBuffer, password) {
 
   let xmlAssinado = xml;
   for (const id of ids) {
-    xmlAssinado = _assinarElemento(xmlAssinado, id, credenciais);
+    xmlAssinado = _assinarElemento(xmlAssinado, id, credenciais, options);
   }
 
   return xmlAssinado;
@@ -233,7 +249,7 @@ ${closingTag}`
  * @param {string[]} ids
  * @returns {string} XML assinado ou simulado
  */
-async function assinarMultiplos(xml, ids, pfxBuffer, password) {
+async function assinarMultiplos(xml, ids, pfxBuffer, password, options = {}) {
   await _ensureConfig();
   const pfxPath = config.cert?.path;
 
@@ -246,7 +262,7 @@ async function assinarMultiplos(xml, ids, pfxBuffer, password) {
     return assinarMultiplosElementosMock(xml, ids);
   }
 
-  return assinarMultiplosElementos(xml, ids, pfxBuffer, password);
+  return assinarMultiplosElementos(xml, ids, pfxBuffer, password, options);
 }
 
 /**
@@ -258,8 +274,8 @@ async function assinarMultiplos(xml, ids, pfxBuffer, password) {
  * @param {string} idElemento
  * @returns {string} XML assinado
  */
-async function assinar(xml, idElemento, pfxBuffer, password) {
-  return assinarMultiplos(xml, [idElemento], pfxBuffer, password);
+async function assinar(xml, idElemento, pfxBuffer, password, options = {}) {
+  return assinarMultiplos(xml, [idElemento], pfxBuffer, password, options);
 }
 
 async function assinarLote(xml, idRps, idLote, pfxBuffer, password) {
