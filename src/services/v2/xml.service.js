@@ -30,6 +30,8 @@ const NS_NFSE = 'http://www.sped.fazenda.gov.br/nfse';
 const NS_DS = 'http://www.w3.org/2000/09/xmldsig#';
 const VERSAO_SCHEMA_NACIONAL = '1.01';
 const CODIGO_MUNICIPIO_EXEMPLO = '5208707';
+/** Campo Grande/MS — local de emissão em homologação (orientação prefeitura) */
+const CODIGO_MUNICIPIO_HOMOLOGACAO = '5002704';
 const SERIE_DPS_SUPORTE = '1';
 const CNPJ_EXEMPLO = '43983294000121';
 
@@ -99,18 +101,47 @@ function isValidCnpj(value) {
     && calc(cnpj.slice(0, 13)) === Number(cnpj[13]);
 }
 
+function getTpAmb(dados = {}) {
+  return String(dados.tpAmb || config?.tpAmb || 2);
+}
+
+function isAmbienteHomologacao(dados = {}) {
+  return getTpAmb(dados) === '2' || Boolean(config?.homologacao);
+}
+
 function getCodigoMunicipio(dados = {}) {
   return onlyDigits(
     dados.prestador?.endereco?.codigoMunicipio
       || dados.prestador?.endereco?.cMun
       || dados.codigoMunicipioPrestador
       || dados.codigoMunicipio
-      || config.codigoMunicipioNacional
-      || config.codigoMunicipioGoiania
+      || config?.codigoMunicipioNacional
+      || config?.codigoMunicipioGoiania
   );
 }
 
-function getCodigoMunicipioPrestacao(dados = {}, codigoMunicipio) {
+/**
+ * Código IBGE da localidade emissora (cLocEmi e Id da DPS).
+ * Em homologação usa Campo Grande/MS conforme orientação da prefeitura.
+ */
+function getCodigoMunicipioEmissao(dados = {}) {
+  if (isAmbienteHomologacao(dados)) {
+    return onlyDigits(
+      dados.codigoMunicipioEmissao
+        || dados.cLocEmi
+        || config?.codigoMunicipioHomologacao
+        || CODIGO_MUNICIPIO_HOMOLOGACAO
+    );
+  }
+
+  return onlyDigits(
+    dados.cLocEmi
+      || dados.codigoMunicipioEmissao
+      || getCodigoMunicipio(dados)
+  );
+}
+
+function getCodigoMunicipioPrestacao(dados = {}, codigoMunicipioEmissao) {
   const informado = onlyDigits(
     dados.servico?.cMunIncid
       || dados.servico?.cLocPrestacao
@@ -119,7 +150,7 @@ function getCodigoMunicipioPrestacao(dados = {}, codigoMunicipio) {
       || dados.servico?.municipioIncidencia
   );
   if (informado) return informado;
-  return codigoMunicipio || CODIGO_MUNICIPIO_EXEMPLO;
+  return codigoMunicipioEmissao || CODIGO_MUNICIPIO_EXEMPLO;
 }
 
 function getSerieDps(dados = {}) {
@@ -390,15 +421,27 @@ function hasRetencaoFederal(dados = {}) {
 
 function validarDpsNegocio(dados = {}, contexto = {}) {
   const mensagens = [];
-  const { prestador, codigoMunicipio, codigoMunicipioPrestacao, fiscal } = contexto;
+  const {
+    prestador,
+    codigoMunicipio,
+    codigoMunicipioEmissao,
+    codigoMunicipioPrestacao,
+    fiscal,
+    homologacao,
+  } = contexto;
   const add = (codigo, mensagem, correcao) => mensagens.push(criarMensagemValidacao(codigo, mensagem, correcao));
 
-  if (!codigoMunicipio || codigoMunicipio.length !== 7) {
+  if (!codigoMunicipioEmissao || codigoMunicipioEmissao.length !== 7) {
     add('V2-LOC-EMI', 'Codigo da localidade emissora nao informado ou invalido.', 'Preencha o codigo IBGE de 7 digitos no cadastro da empresa/prestador.');
   }
 
   const municipioPrestador = onlyDigits(prestador?.endereco?.codigoMunicipio || prestador?.endereco?.cMun);
-  if (municipioPrestador && codigoMunicipio && municipioPrestador !== codigoMunicipio) {
+  if (
+    !homologacao
+    && municipioPrestador
+    && codigoMunicipioEmissao
+    && municipioPrestador !== codigoMunicipioEmissao
+  ) {
     add('V2-ID-DPS', 'Municipio usado no Id/cLocEmi difere do municipio do endereco do prestador.', 'Use o mesmo codigo IBGE do endereco do emitente para formar o Id da DPS e preencher cLocEmi.');
   }
 
@@ -415,9 +458,10 @@ function validarDpsNegocio(dados = {}, contexto = {}) {
   }
 
   if (
-    codigoMunicipio
+    !homologacao
+    && codigoMunicipioEmissao
     && codigoMunicipioPrestacao
-    && codigoMunicipioPrestacao !== codigoMunicipio
+    && codigoMunicipioPrestacao !== codigoMunicipioEmissao
     && !dados.permitirPrestacaoForaMunicipio
   ) {
     add(
@@ -518,21 +562,25 @@ function gerarIdNFSe(codigoMunicipio, ambienteGerador, tipoInscricaoFederal, ins
 }
 
 function montarDpsObject(dados, includeNamespace = false) {
-  const codigoMunicipio = getCodigoMunicipio(dados);
-  const codigoMunicipioPrestacao = getCodigoMunicipioPrestacao(dados, codigoMunicipio);
+  const codigoMunicipioEmissao = getCodigoMunicipioEmissao(dados);
+  const codigoMunicipioPrestador = getCodigoMunicipio(dados);
+  const codigoMunicipioPrestacao = getCodigoMunicipioPrestacao(dados, codigoMunicipioEmissao);
+  const homologacao = isAmbienteHomologacao(dados);
   const prestador = resolvePrestador(dados);
   const fiscal = extrairFiscalServico(dados);
   validarDpsNegocio(dados, {
     prestador,
-    codigoMunicipio,
+    codigoMunicipio: codigoMunicipioPrestador,
+    codigoMunicipioEmissao,
     codigoMunicipioPrestacao,
     fiscal,
+    homologacao,
   });
   const serieDps = getSerieDps(dados);
   const numeroDps = getNumeroDps(dados);
   const tpEmit = String(dados.tpEmit ?? '1');
   const idDps = gerarIdDPS(
-    codigoMunicipio,
+    codigoMunicipioEmissao,
     prestador.tipoInscricaoFederal,
     prestador.documento,
     serieDps,
@@ -605,7 +653,7 @@ function montarDpsObject(dados, includeNamespace = false) {
     nDPS: numeroDps,
     dCompet: formatarData(dados.dCompet || dados.rps?.competencia || dados.rps?.dataEmissao),
     tpEmit,
-    cLocEmi: codigoMunicipio,
+    cLocEmi: codigoMunicipioEmissao,
     ...(dados.subst ? {
       subst: {
         chSubstda: onlyDigits(dados.subst.chSubstda || dados.subst.chNFSe || dados.subst.chaveAcesso),
@@ -619,7 +667,7 @@ function montarDpsObject(dados, includeNamespace = false) {
         opSimpNac: dados.optanteSimplesNacional ? 3 : 1,
         regApTribSN: dados.regApTribSN || dados.regimeApuracao,
         regEspTrib: dados.regEspTrib ?? dados.regimeEspecialTributacao,
-      }, codigoMunicipio);
+      }, codigoMunicipioPrestador);
       if (tpEmit === '1') {
         delete p.xNome;
         delete p.end;
@@ -628,7 +676,7 @@ function montarDpsObject(dados, includeNamespace = false) {
     })(),
   };
 
-  const tomador = montarPessoaTomador(dados.tomador, codigoMunicipio);
+  const tomador = montarPessoaTomador(dados.tomador, codigoMunicipioPrestador);
   if (tomador) infDPS.toma = tomador;
   infDPS.serv = serv;
   infDPS.valores = valores;

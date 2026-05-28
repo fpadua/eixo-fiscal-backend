@@ -57,6 +57,8 @@ async function getConfig(tenantId) {
       frontendUrl: process.env.FRONTEND_URL || '',
       codigoMunicipioNacional: tenant.endereco?.codigoMunicipio || process.env.CODIGO_MUNICIPIO_NACIONAL || '5208707',
       codigoMunicipioGoiania: tenant.endereco?.codigoMunicipio || process.env.CODIGO_MUNICIPIO_GOIANIA || '5208707',
+      /** IBGE Campo Grande/MS — localidade emissora exigida pela prefeitura em homologação */
+      codigoMunicipioHomologacao: process.env.CODIGO_MUNICIPIO_HOMOLOGACAO || '5002704',
     };
 
     return config;
