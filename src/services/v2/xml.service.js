@@ -111,15 +111,15 @@ function getCodigoMunicipio(dados = {}) {
 }
 
 function getCodigoMunicipioPrestacao(dados = {}, codigoMunicipio) {
-  return onlyDigits(
-    dados.servico?.cMunIncid 
+  const informado = onlyDigits(
+    dados.servico?.cMunIncid
       || dados.servico?.cLocPrestacao
       || dados.cLocPrestacao
       || dados.codigoMunicipioIncidencia
       || dados.servico?.municipioIncidencia
-      || codigoMunicipio
-      || CODIGO_MUNICIPIO_EXEMPLO
   );
+  if (informado) return informado;
+  return codigoMunicipio || CODIGO_MUNICIPIO_EXEMPLO;
 }
 
 function getSerieDps(dados = {}) {
@@ -414,6 +414,19 @@ function validarDpsNegocio(dados = {}, contexto = {}) {
     add('V2-LOC-PREST', 'Codigo do local de prestacao nao informado ou invalido.', 'Informe o codigo IBGE de 7 digitos do local da prestacao.');
   }
 
+  if (
+    codigoMunicipio
+    && codigoMunicipioPrestacao
+    && codigoMunicipioPrestacao !== codigoMunicipio
+    && !dados.permitirPrestacaoForaMunicipio
+  ) {
+    add(
+      'L111',
+      'Local de prestacao informado difere do municipio emissor da DPS.',
+      'Use o codigo IBGE do municipio do prestador (localidade emissora) ou atualize o cadastro na Prefeitura para emitir fora do municipio.'
+    );
+  }
+
   if (!fiscal.cTribNac || !taxTables.findTributacaoNacional(fiscal.cTribNac)) {
     add('E0310', 'Codigo de tributacao nacional inexistente ou nao informado.', 'Selecione um cTribNac da tabela TributacaoNacional.xlsx.');
   }
@@ -517,6 +530,7 @@ function montarDpsObject(dados, includeNamespace = false) {
   });
   const serieDps = getSerieDps(dados);
   const numeroDps = getNumeroDps(dados);
+  const tpEmit = String(dados.tpEmit ?? '1');
   const idDps = gerarIdDPS(
     codigoMunicipio,
     prestador.tipoInscricaoFederal,
@@ -590,7 +604,7 @@ function montarDpsObject(dados, includeNamespace = false) {
     serie: serieDps,
     nDPS: numeroDps,
     dCompet: formatarData(dados.dCompet || dados.rps?.competencia || dados.rps?.dataEmissao),
-    tpEmit: '1',
+    tpEmit,
     cLocEmi: codigoMunicipio,
     ...(dados.subst ? {
       subst: {
@@ -606,7 +620,7 @@ function montarDpsObject(dados, includeNamespace = false) {
         regApTribSN: dados.regApTribSN || dados.regimeApuracao,
         regEspTrib: dados.regEspTrib ?? dados.regimeEspecialTributacao,
       }, codigoMunicipio);
-      if (String(dados.tpEmit || prestador.tipoInscricaoFederal || '1') === '1') {
+      if (tpEmit === '1') {
         delete p.xNome;
         delete p.end;
       }
