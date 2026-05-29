@@ -19,7 +19,7 @@ async function getUiConfig(tenantId) {
 
   return {
     nfseVersion: ALLOWED_VERSIONS.has(settings.nfseVersion) ? settings.nfseVersion : 'v2',
-    ambiente: ALLOWED_AMBIENTES.has(settings.ambiente) ? settings.ambiente : 'homologacao',
+    ambiente: ALLOWED_AMBIENTES.has(settings.ambiente) ? settings.ambiente : 'producao',
   };
 }
 

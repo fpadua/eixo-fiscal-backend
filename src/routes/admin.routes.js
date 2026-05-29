@@ -10,6 +10,7 @@ router.use(authMiddleware, masterAuth);
 router.get('/dashboard', ctrl.dashboard);
 router.get('/tenants', ctrl.listarTenants);
 router.put('/tenants/:id', ctrl.atualizarTenant);
+router.put('/tenants/:id/nfse-ui', ctrl.atualizarTenantNfseUi);
 router.get('/usuarios', ctrl.listarUsuarios);
 router.put('/usuarios/:id', ctrl.atualizarUsuario);
 router.get('/configuracoes', ctrl.getConfiguracoes);

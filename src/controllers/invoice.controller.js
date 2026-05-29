@@ -1,6 +1,7 @@
 const InvoiceRepository = require('../repositories/invoice.repository');
 const ClientRepository = require('../repositories/client.repository');
 const { PrismaClient } = require('@prisma/client');
+const { calcularPrecos, validarBillingCycle } = require('../utils/planoPrecos');
 const prisma = new PrismaClient();
 
 async function listar(req, res) {
@@ -72,6 +73,8 @@ async function planStatus(req, res) {
     const limite = plan.limiteNotas;
     const percentual = limite > 0 ? Math.round((notasMes / limite) * 100) : 0;
     const excedido = limite > 0 && notasMes >= limite;
+    const billingCycle = validarBillingCycle(tenant.billingCycle);
+    const precos = calcularPrecos(plan, billingCycle);
 
     res.json({
       hasPlan: true,
@@ -84,6 +87,9 @@ async function planStatus(req, res) {
       percentual,
       excedido,
       planStatus: tenant.planStatus,
+      billingCycle,
+      descontoAnualPercent: plan.descontoAnualPercent ?? 0,
+      precos,
       proximoLimite: limite > 0 && notasMes >= Math.floor(limite * 0.8),
       permissoes: plan.permissoes || {},
     });

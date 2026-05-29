@@ -1,5 +1,8 @@
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
+const { z } = require('zod');
+const { normalizarDesconto } = require('../utils/planoPrecos');
+const uiConfigService = require('../services/ui-config.service');
 const prisma = new PrismaClient();
 
 async function dashboard(req, res) {
@@ -114,7 +117,11 @@ async function listarTenants(req, res) {
         where,
         skip: (page - 1) * limit,
         take: Number(limit),
-        include: { plan: true, _count: { select: { users: true, invoices: true } } },
+        include: {
+          plan: true,
+          settings: { select: { nfseVersion: true, ambiente: true } },
+          _count: { select: { users: true, invoices: true } },
+        },
         orderBy: { createdAt: 'desc' },
       }),
       prisma.tenant.count({ where }),
@@ -122,6 +129,39 @@ async function listarTenants(req, res) {
     res.json({ tenants, total, page: Number(page), totalPages: Math.ceil(total / limit) });
   } catch (error) {
     console.error('[ADMIN] List tenants error:', error);
+    res.status(500).json({ erro: error.message });
+  }
+}
+
+async function atualizarTenantNfseUi(req, res) {
+  const schema = z.object({
+    nfseVersion: z.enum(['v1', 'v2']).optional(),
+    ambiente: z.enum(['homologacao', 'producao']).optional(),
+  });
+  const parse = schema.safeParse(req.body);
+  if (!parse.success) {
+    return res.status(400).json({ erro: 'Dados inválidos', detalhes: parse.error.flatten() });
+  }
+  if (!parse.data.nfseVersion && !parse.data.ambiente) {
+    return res.status(400).json({ erro: 'Informe nfseVersion e/ou ambiente' });
+  }
+
+  try {
+    const { id } = req.params;
+    const tenant = await prisma.tenant.findUnique({ where: { id }, select: { id: true } });
+    if (!tenant) return res.status(404).json({ erro: 'Tenant não encontrado' });
+
+    let updated = await uiConfigService.getUiConfig(id);
+    if (parse.data.nfseVersion) {
+      updated = await uiConfigService.setNfseVersion(id, parse.data.nfseVersion);
+    }
+    if (parse.data.ambiente) {
+      updated = await uiConfigService.setAmbiente(id, parse.data.ambiente);
+    }
+
+    res.json(updated);
+  } catch (error) {
+    console.error('[ADMIN] Update tenant NFS-e UI error:', error);
     res.status(500).json({ erro: error.message });
   }
 }
@@ -229,9 +269,18 @@ async function listarPlanos(req, res) {
 
 async function criarPlano(req, res) {
   try {
-    const { nome, slug, precoMensal, limiteNotas, maxUsuarios, features } = req.body;
+    const { nome, slug, precoMensal, descontoAnualPercent, limiteNotas, maxUsuarios, features, permissoes } = req.body;
     const plano = await prisma.plan.create({
-      data: { nome, slug, precoMensal: Number(precoMensal), limiteNotas: Number(limiteNotas || 0), maxUsuarios: Number(maxUsuarios || 1), features: features || [] },
+      data: {
+        nome,
+        slug,
+        precoMensal: Number(precoMensal),
+        descontoAnualPercent: normalizarDesconto(descontoAnualPercent),
+        limiteNotas: Number(limiteNotas || 0),
+        maxUsuarios: Number(maxUsuarios || 1),
+        features: features || [],
+        permissoes: permissoes || {},
+      },
     });
     res.status(201).json(plano);
   } catch (error) {
@@ -243,7 +292,16 @@ async function criarPlano(req, res) {
 async function atualizarPlano(req, res) {
   try {
     const { id } = req.params;
-    const data = req.body;
+    const { nome, slug, precoMensal, descontoAnualPercent, limiteNotas, maxUsuarios, features, permissoes } = req.body;
+    const data = {};
+    if (nome !== undefined) data.nome = nome;
+    if (slug !== undefined) data.slug = slug;
+    if (precoMensal !== undefined) data.precoMensal = Number(precoMensal);
+    if (descontoAnualPercent !== undefined) data.descontoAnualPercent = normalizarDesconto(descontoAnualPercent);
+    if (limiteNotas !== undefined) data.limiteNotas = Number(limiteNotas);
+    if (maxUsuarios !== undefined) data.maxUsuarios = Number(maxUsuarios);
+    if (features !== undefined) data.features = features;
+    if (permissoes !== undefined) data.permissoes = permissoes;
     const plano = await prisma.plan.update({ where: { id }, data });
     res.json(plano);
   } catch (error) {
@@ -289,4 +347,17 @@ async function atualizarUsuario(req, res) {
   }
 }
 
-module.exports = { dashboard, listarTenants, atualizarTenant, listarUsuarios, atualizarUsuario, getConfiguracoes, relatoriosDashboard, listarPlanos, criarPlano, atualizarPlano, deletarPlano };
+module.exports = {
+  dashboard,
+  listarTenants,
+  atualizarTenant,
+  atualizarTenantNfseUi,
+  listarUsuarios,
+  atualizarUsuario,
+  getConfiguracoes,
+  relatoriosDashboard,
+  listarPlanos,
+  criarPlano,
+  atualizarPlano,
+  deletarPlano,
+};

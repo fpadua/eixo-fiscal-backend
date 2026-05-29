@@ -21,6 +21,7 @@ model Tenant {
   planId              String?
   planStatus          String   @default("trial")
   planInicio          DateTime?
+  billingCycle        String   @default("monthly")
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
@@ -39,8 +40,9 @@ model Plan {
   id            String   @id @default(uuid())
   nome          String
   slug          String   @unique
-  precoMensal   Decimal  @db.Decimal(10, 2)
-  limiteNotas   Int      @default(0)
+  precoMensal           Decimal  @db.Decimal(10, 2)
+  descontoAnualPercent  Int      @default(0)
+  limiteNotas           Int      @default(0)
   maxUsuarios   Int      @default(1)
   features      Json     @default("[]")
   permissoes    Json     @default("{}")

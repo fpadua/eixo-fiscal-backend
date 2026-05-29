@@ -1,4 +1,5 @@
 const { PrismaClient } = require('@prisma/client');
+const { calcularPrecos, validarBillingCycle } = require('../utils/planoPrecos');
 const prisma = new PrismaClient();
 
 async function listar(req, res) {
@@ -18,6 +19,7 @@ async function assinar(req, res) {
   try {
     const tenantId = req.tenantId || 'default-tenant-id';
     const { id } = req.params;
+    const billingCycle = validarBillingCycle(req.body?.billingCycle);
 
     const plano = await prisma.plan.findUnique({ where: { id } });
     if (!plano) {
@@ -40,15 +42,26 @@ async function assinar(req, res) {
       }
     }
 
-    const updated = await prisma.tenant.update({
+    await prisma.tenant.update({
       where: { id: tenantId },
-      data: { planId: plano.id, planStatus: 'active', planInicio: new Date() },
+      data: { planId: plano.id, planStatus: 'active', planInicio: new Date(), billingCycle },
     });
+
+    const precos = calcularPrecos(plano, billingCycle);
 
     res.json({
       success: true,
-      message: `Plano alterado para ${plano.nome} com sucesso!`,
-      plano: { id: plano.id, nome: plano.nome, slug: plano.slug, precoMensal: plano.precoMensal, limiteNotas: plano.limiteNotas },
+      message: `Plano alterado para ${plano.nome} (${billingCycle === 'annual' ? 'anual' : 'mensal'}) com sucesso!`,
+      billingCycle,
+      precos,
+      plano: {
+        id: plano.id,
+        nome: plano.nome,
+        slug: plano.slug,
+        precoMensal: plano.precoMensal,
+        descontoAnualPercent: plano.descontoAnualPercent,
+        limiteNotas: plano.limiteNotas,
+      },
     });
   } catch (error) {
     console.error('[PLANO] Subscribe error:', error);

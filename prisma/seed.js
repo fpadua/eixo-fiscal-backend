@@ -48,11 +48,11 @@ async function main() {
   };
 
   const planos = [
-    { nome: 'Free', slug: 'free', precoMensal: 0, limiteNotas: 10, maxUsuarios: 1, features: ['emitir_nfse'], permissoes: permissoesFree },
-    { nome: 'Basic', slug: 'basic', precoMensal: 49.90, limiteNotas: 100, maxUsuarios: 2, features: ['emitir_nfse'], permissoes: permissoesBasic },
-    { nome: 'Pro', slug: 'pro', precoMensal: 99.90, limiteNotas: 1000, maxUsuarios: 5, features: ['emitir_nfse', 'modulo_financeiro'], permissoes: permissoesFull },
-    { nome: 'Premium', slug: 'premium', precoMensal: 297, limiteNotas: 5000, maxUsuarios: 10, features: ['emitir_nfse', 'modulo_financeiro', 'api_integracao'], permissoes: permissoesFull },
-    { nome: 'Enterprise', slug: 'enterprise', precoMensal: 0, limiteNotas: 0, maxUsuarios: 999, features: ['emitir_nfse', 'modulo_financeiro', 'api_integracao', 'suporte_prioritario'], permissoes: permissoesFull },
+    { nome: 'Free', slug: 'free', precoMensal: 0, descontoAnualPercent: 0, limiteNotas: 10, maxUsuarios: 1, features: ['emitir_nfse'], permissoes: permissoesFree },
+    { nome: 'Basic', slug: 'basic', precoMensal: 49.90, descontoAnualPercent: 15, limiteNotas: 100, maxUsuarios: 2, features: ['emitir_nfse'], permissoes: permissoesBasic },
+    { nome: 'Pro', slug: 'pro', precoMensal: 99.90, descontoAnualPercent: 15, limiteNotas: 1000, maxUsuarios: 5, features: ['emitir_nfse', 'modulo_financeiro'], permissoes: permissoesFull },
+    { nome: 'Premium', slug: 'premium', precoMensal: 297, descontoAnualPercent: 15, limiteNotas: 5000, maxUsuarios: 10, features: ['emitir_nfse', 'modulo_financeiro', 'api_integracao'], permissoes: permissoesFull },
+    { nome: 'Enterprise', slug: 'enterprise', precoMensal: 0, descontoAnualPercent: 0, limiteNotas: 0, maxUsuarios: 999, features: ['emitir_nfse', 'modulo_financeiro', 'api_integracao', 'suporte_prioritario'], permissoes: permissoesFull },
   ];
 
   for (const p of planos) {

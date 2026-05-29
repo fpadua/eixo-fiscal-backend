@@ -21,22 +21,14 @@ async function updateConfig(req, res) {
     return res.status(400).json({ erro: 'Dados inválidos', detalhes: parse.error.flatten() });
   }
 
-  try {
-    const tenantId = req.tenantId || 'default-tenant-id';
-    const data = parse.data;
-    let updated = await uiConfigService.getUiConfig(tenantId);
-
-    if (data.nfseVersion) {
-      updated = await uiConfigService.setNfseVersion(tenantId, data.nfseVersion);
-    }
-    if (data.ambiente) {
-      updated = await uiConfigService.setAmbiente(tenantId, data.ambiente);
-    }
-
-    res.json(updated);
-  } catch (error) {
-    res.status(500).json({ erro: error.message });
+  if (parse.data.nfseVersion || parse.data.ambiente) {
+    return res.status(403).json({
+      erro: 'Versão e ambiente só podem ser alterados pelo administrador master no painel administrativo',
+      code: 'MASTER_ADMIN_REQUIRED',
+    });
   }
+
+  res.json(await uiConfigService.getUiConfig(req.tenantId || 'default-tenant-id'));
 }
 
 module.exports = {
