@@ -206,27 +206,42 @@ async function registrarTenant(req, res) {
       return res.status(400).json({ erro: 'Subdomínio já cadastrado' });
     }
 
-    const tenant = await tenantRepo.create({
-      subdomain: data.subdomain,
-      razaoSocial: data.razaoSocial,
-      nomeFantasia: data.nomeFantasia,
-      cnpj: data.cnpj.replace(/\D/g, ''),
-      inscricaoMunicipal: data.inscricaoMunicipal,
-      ie: data.ie,
-      endereco: data.endereco || {},
-      settings: {
-        nfseVersion: 'v2',
-        ambiente: 'homologacao',
-      },
-    });
+    const { tenant, user } = await prisma.$transaction(async (tx) => {
+      // 1. Criar o Tenant
+      const newTenant = await tx.tenant.create({
+        data: {
+          subdomain: data.subdomain,
+          status: 'active',
+          razaoSocial: data.razaoSocial,
+          nomeFantasia: data.nomeFantasia,
+          cnpj: data.cnpj.replace(/\D/g, ''),
+          inscricaoMunicipal: data.inscricaoMunicipal,
+          ie: data.ie,
+          endereco: data.endereco || {},
+          settings: {
+            create: {
+              nfseVersion: 'v2',
+              ambiente: 'producao',
+            },
+          },
+        },
+      });
 
-    const userRepo = new UserRepository(tenant.id);
-    const user = await userRepo.create({
-      email: data.email,
-      password: data.password,
-      nome: data.razaoSocial,
-      role: 'admin',
-      status: 'pending',
+      // 2. Criar o Usuário vinculado ao Tenant
+      const bcrypt = require('bcryptjs');
+      const hashedPassword = await bcrypt.hash(data.password, 10);
+      const newUser = await tx.user.create({
+        data: {
+          tenantId: newTenant.id,
+          email: data.email,
+          password: hashedPassword,
+          nome: data.razaoSocial,
+          role: 'admin',
+          status: 'pending',
+        },
+      });
+
+      return { tenant: newTenant, user: newUser };
     });
 
     // Gerar token de verificação (24h)
