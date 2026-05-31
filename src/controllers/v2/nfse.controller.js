@@ -239,16 +239,26 @@ async function consultarNfsePorDps(req, res) {
 async function consultarNfsePorFaixa(req, res) {
   try {
     const { inicio, fim, pagina } = req.query;
+    const tenantId = req.tenantId || 'default-tenant-id';
+    const { pfxBuffer, password } = await loadCert(tenantId);
+    if (!pfxBuffer || !password) {
+      return res.status(400).json({ sucesso: false, erro: 'Certificado ou senha não fornecidos/válidos.' });
+    }
     const prestador = await getPrestadorConsulta(req);
     const resultado = await nfseService.consultarNfsePorFaixa(
       parseInt(inicio, 10),
       parseInt(fim, 10),
       parseInt(pagina, 10) || 1,
+      pfxBuffer,
+      password,
       prestador.documento,
       prestador.inscricaoMunicipal
     );
     res.json(resultado);
   } catch (err) {
+    if (err.message.includes('Falha ao carregar certificado') || err.message.includes('Senha do certificado PKCS#12 inválida')) {
+      return res.status(401).json({ sucesso: false, erro: `Erro de certificado: ${err.message}` });
+    }
     return responderErro(res, err);
   }
 }

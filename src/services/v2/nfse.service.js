@@ -379,12 +379,14 @@ async function consultarNfsePorDps(numeroDps, serieDps, pfxBuffer, password, cnp
   return _parsearResposta(respostaSoap);
 }
 
-async function consultarNfsePorFaixa(numeroInicial, numeroFinal, pagina, cnpjPrestador, inscricaoMunicipal) {
+async function consultarNfsePorFaixa(numeroInicial, numeroFinal, pagina, pfxBuffer, password, cnpjPrestador, inscricaoMunicipal) {
   await _ensureConfig();
   cnpjPrestador = cnpjPrestador || config.prestador.cnpj;
   inscricaoMunicipal = inscricaoMunicipal || config.prestador.inscricaoMunicipal;
   const xml = xmlService.gerarXmlConsultaPorFaixa(numeroInicial, numeroFinal, pagina, cnpjPrestador, inscricaoMunicipal);
-  const respostaSoap = await soapService.enviarSoap('ConsultarNfseFaixa', xml);
+  const idElemento = _extrairIdXml(xml) || `faixa:${numeroInicial}-${numeroFinal}`;
+  const xmlAssinado = await _assinarXml(xml, idElemento, pfxBuffer, password);
+  const respostaSoap = await soapService.enviarSoap('ConsultarNfseFaixa', xmlAssinado, pfxBuffer, password);
   return _parsearResposta(respostaSoap);
 }
 
