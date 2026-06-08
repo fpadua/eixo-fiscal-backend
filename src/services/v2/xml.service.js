@@ -406,6 +406,21 @@ function criarErroValidacao(mensagens) {
   const error = new Error('DPS v2 invalida. Revise os campos obrigatorios antes do envio.');
   error.code = 'VALIDACAO_DPS_V2';
   error.mensagensRetorno = mensagens;
+  const mapCodigoParaCampo = {
+    E0322: ['cNBS'],
+    E0901: ['cIndOp'],
+    E0017: ['cClassTrib'],
+    'V2-CST': ['CST'],
+    'V2-TOMADOR': ['cnpjCpfTomador'],
+    E056: ['logradouroTomador'],
+    E0237: ['numeroTomador', 'bairroTomador', 'cepTomador', 'codigoMunicipioTomador'],
+  };
+  const missing = new Set();
+  (mensagens || []).forEach((msg) => {
+    const campos = mapCodigoParaCampo[msg?.Codigo];
+    if (Array.isArray(campos)) campos.forEach((campo) => missing.add(campo));
+  });
+  error.missingFields = Array.from(missing);
   return error;
 }
 

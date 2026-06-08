@@ -99,6 +99,7 @@ function responderErro(res, err) {
       sucesso: false,
       erro: err.message,
       mensagensRetorno: err.mensagensRetorno || [],
+      missingFields: err.missingFields || [],
     });
   }
   if (err.message.includes('Falha ao carregar certificado') || err.message.includes('Senha do certificado')) {
@@ -138,6 +139,7 @@ async function gerarNfse(req, res) {
         sucesso: false,
         erro: err.message,
         mensagensRetorno: err.mensagensRetorno || [],
+        missingFields: err.missingFields || [],
       });
     }
     // Aqui você pode diferenciar o erro de certificado
