@@ -192,8 +192,10 @@ const cadastroSchema = z.object({
 });
 
 async function registrarTenant(req, res) {
+  console.log('[REGISTER] Iniciando registro de tenant:', req.body.subdomain);
   const parse = cadastroSchema.safeParse(req.body);
   if (!parse.success) {
+    console.warn('[REGISTER] Dados inválidos:', parse.error.flatten());
     return res.status(400).json({ erro: 'Dados inválidos', detalhes: parse.error.flatten() });
   }
 
@@ -203,9 +205,11 @@ async function registrarTenant(req, res) {
 
     const existingTenant = await tenantRepo.findBySubdomain(data.subdomain);
     if (existingTenant) {
+      console.warn('[REGISTER] Subdomínio já existe:', data.subdomain);
       return res.status(400).json({ erro: 'Subdomínio já cadastrado' });
     }
 
+    console.log('[REGISTER] Iniciando transação no banco...');
     const { tenant, user } = await prisma.$transaction(async (tx) => {
       // 1. Criar o Tenant
       const newTenant = await tx.tenant.create({
@@ -243,10 +247,14 @@ async function registrarTenant(req, res) {
 
       return { tenant: newTenant, user: newUser };
     });
+    console.log('[REGISTER] Transação concluída. Tenant ID:', tenant.id);
 
     // Gerar token de verificação (24h)
     const jwtSecret = process.env.JWT_SECRET;
-    if (!jwtSecret) throw new Error('JWT_SECRET não configurado');
+    if (!jwtSecret) {
+      console.error('[REGISTER] JWT_SECRET não configurado');
+      throw new Error('JWT_SECRET não configurado');
+    }
     const verifyToken = jwt.sign(
       { id: user.id, email: user.email },
       jwtSecret + '_verify',
@@ -256,12 +264,13 @@ async function registrarTenant(req, res) {
     const baseUrl = `http://${tenant.subdomain}.localhost:3000`;
     const verifyUrl = `${baseUrl}/auth/verify?token=${verifyToken}`;
 
-    console.log(`[REGISTER] URL de verificação: ${verifyUrl}`);
+    console.log(`[REGISTER] URL de verificação gerada: ${verifyUrl}`);
 
     // Tentar enviar email via Resend
     try {
       const resendKey = process.env.RESEND_API_KEY;
       if (resendKey) {
+        console.log('[REGISTER] Tentando enviar email via Resend...');
         const { Resend } = require('resend');
         const resend = new Resend(resendKey);
         const fromAddr = process.env.EMAIL_FROM || 'onboarding@resend.dev';
@@ -290,11 +299,14 @@ async function registrarTenant(req, res) {
         if (emailResp?.error) {
           console.warn('[REGISTER] Resend erro:', emailResp.error.message || emailResp.error);
         }
+      } else {
+        console.log('[REGISTER] RESEND_API_KEY não configurada, pulando envio de email.');
       }
     } catch (emailErr) {
       console.warn('[REGISTER] Falha ao enviar email (verifique RESEND_API_KEY):', emailErr.message);
     }
 
+    console.log('[REGISTER] Respondendo sucesso para o cliente.');
     res.status(201).json({
       success: true,
       tenant: { id: tenant.id, subdomain: tenant.subdomain, razaoSocial: tenant.razaoSocial },
@@ -302,7 +314,7 @@ async function registrarTenant(req, res) {
       verifyUrl,
     });
   } catch (error) {
-    console.error('[REGISTER] Error:', error);
+    console.error('[REGISTER] Erro crítico:', error);
     if (error.code === 'P2002') {
       return res.status(400).json({ erro: 'CNPJ já cadastrado' });
     }
@@ -319,7 +331,7 @@ async function getTenantInfo(req, res) {
     const tenant = await prisma.tenant.findUnique({
       where: { id: tenantId },
     });
-    if (!tenant) return res.status(404).json({ erro: 'Tenant não encontrado' });
+    if (!tenant) return res.status(404).json({ erro: 'Cliente não encontrado' });
     res.json({
       razaoSocial: tenant.razaoSocial,
       nomeFantasia: tenant.nomeFantasia,

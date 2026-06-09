@@ -1,6 +1,9 @@
 const { PrismaClient } = require('@prisma/client');
 const { calcularPrecos, validarBillingCycle } = require('../utils/planoPrecos');
 const prisma = new PrismaClient();
+const { MercadoPagoConfig, Preference } = require('mercadopago');
+
+const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
 
 async function listar(req, res) {
   try {
@@ -26,42 +29,72 @@ async function assinar(req, res) {
       return res.status(404).json({ erro: 'Plano não encontrado' });
     }
 
-    const now = new Date();
-    const mesAtual = new Date(now.getFullYear(), now.getMonth(), 1);
-    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, include: { plan: true } });
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
 
-    if (plano.limiteNotas > 0) {
-      const notasMes = await prisma.invoice.count({
-        where: { tenantId, createdAt: { gte: mesAtual }, status: { not: 'rascunho' } },
+    // Se o tenant já tem um plano ativo, atualiza direto (upgrade/downgrade)
+    if (tenant && tenant.planStatus === 'active' && tenant.planId) {
+      const data = {
+        planId: plano.id,
+        billingCycle,
+        planInicio: new Date(),
+      };
+      const updated = await prisma.tenant.update({
+        where: { id: tenantId },
+        data,
+        include: { plan: true },
       });
-      if (notasMes > plano.limiteNotas) {
-        return res.status(400).json({
-          erro: `Seu plano atual já possui ${notasMes} notas emitidas, que excede o limite de ${plano.limiteNotas} do novo plano. Reduza ou aguarde o próximo mês.`,
-          code: 'PLAN_DOWNGRADE_EXCEEDED',
-        });
-      }
+      const precos = calcularPrecos(plano, billingCycle);
+      return res.json({
+        message: `Plano alterado para ${plano.nome} com sucesso!`,
+        plano,
+        billingCycle,
+        precos,
+      });
     }
 
-    await prisma.tenant.update({
-      where: { id: tenantId },
-      data: { planId: plano.id, planStatus: 'active', planInicio: new Date(), billingCycle },
+    // Calcula o preço correto conforme o ciclo de faturamento
+    const precos = calcularPrecos(plano, billingCycle);
+    const precoCobrado = billingCycle === 'annual'
+      ? Number(precos.equivalenteMensal)
+      : Number(precos.mensal);
+    const precoFormatado = Number(precoCobrado.toFixed(2));
+
+    const preference = new Preference(client);
+    const result = await preference.create({
+      body: {
+        items: [
+          {
+            id: plano.id,
+            title: `Plano ${plano.nome}${billingCycle === 'annual' ? ' (Anual)' : ''}`,
+            unit_price: precoFormatado,
+            quantity: 1,
+            currency_id: 'BRL',
+          },
+        ],
+        back_urls: {
+          success: `${process.env.FRONTEND_URL}/pagamento/sucesso`,
+          failure: `${process.env.FRONTEND_URL}/pagamento/erro`,
+          pending: `${process.env.FRONTEND_URL}/pagamento/pendente`,
+        },
+        external_reference: tenantId,
+      },
     });
 
-    const precos = calcularPrecos(plano, billingCycle);
+    // Marca o plano como pendente de pagamento
+    await prisma.tenant.update({
+      where: { id: tenantId },
+      data: {
+        planId: plano.id,
+        planStatus: 'pendente',
+        billingCycle,
+      },
+    });
 
     res.json({
-      success: true,
-      message: `Plano alterado para ${plano.nome} (${billingCycle === 'annual' ? 'anual' : 'mensal'}) com sucesso!`,
-      billingCycle,
-      precos,
-      plano: {
-        id: plano.id,
-        nome: plano.nome,
-        slug: plano.slug,
-        precoMensal: plano.precoMensal,
-        descontoAnualPercent: plano.descontoAnualPercent,
-        limiteNotas: plano.limiteNotas,
-      },
+      id: result.id,
+      urlCheckout: result.init_point,
+      mpPublicKey: process.env.MP_PUBLIC_KEY,
+      amount: precoFormatado,
     });
   } catch (error) {
     console.error('[PLANO] Subscribe error:', error);

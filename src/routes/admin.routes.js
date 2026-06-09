@@ -19,5 +19,6 @@ router.get('/planos', ctrl.listarPlanos);
 router.post('/planos', ctrl.criarPlano);
 router.put('/planos/:id', ctrl.atualizarPlano);
 router.delete('/planos/:id', ctrl.deletarPlano);
+router.get('/pagamentos', ctrl.listarPagamentos);
 
 module.exports = router;

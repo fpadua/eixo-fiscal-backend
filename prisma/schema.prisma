@@ -30,6 +30,7 @@ model Tenant {
   clients             Client[]
   invoices            Invoice[]
   drafts              Draft[]
+  payments            Payment[]
   plan                Plan?    @relation(fields: [planId], references: [id])
 
   @@index([planId])
@@ -51,6 +52,7 @@ model Plan {
   updatedAt     DateTime @updatedAt
 
   tenants       Tenant[]
+  payments      Payment[]
 
   @@map("plans")
 }
@@ -154,4 +156,38 @@ model Draft {
   @@index([tenantId])
   @@index([tenantId, createdAt])
   @@map("drafts")
+}
+
+model Payment {
+  id                 String    @id @default(uuid())
+  tenantId           String
+  planId             String?
+  mpPaymentId        String?   @unique
+  mpPreferenceId     String?
+  status             String    @default("pending")
+  statusDetail       String?
+  transactionAmount  Decimal   @db.Decimal(15, 2)
+  refundedAmount     Decimal?  @default(0) @db.Decimal(15, 2)
+  netReceivedAmount  Decimal?  @db.Decimal(15, 2)
+  paymentMethodId    String?
+  paymentTypeId      String?
+  installments       Int?      @default(1)
+  description        String?
+  payerEmail         String?
+  payerName          String?
+  payerDocument      String?
+  billingCycle       String?
+  paidAt             DateTime?
+  mpRawResponse      Json?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  tenant             Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan               Plan?     @relation(fields: [planId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, paidAt])
+  @@index([tenantId, createdAt])
+  @@map("payments")
 }

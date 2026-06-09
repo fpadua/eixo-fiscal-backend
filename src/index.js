@@ -14,6 +14,7 @@ const adminRoutes = require('./routes/admin.routes');
 const invoiceRoutes = require('./routes/invoice.routes');
 const planoRoutes = require('./routes/plano.routes');
 const usuarioRoutes = require('./routes/usuario.routes');
+const pagamentoRoutes = require('./routes/pagamento.routes');
 const { tenantMiddleware } = require('./middleware/tenant.middleware');
 const { authMiddleware } = require('./middleware/auth.middleware');
 
@@ -49,20 +50,29 @@ const authLimiter = rateLimit({
     contentSecurityPolicy: {
       useDefaults: true,
       directives: {
-        connectSrc: ["'self'", ...ALLOWED_ORIGINS, 'http://*.localhost:3000', 'http://localhost:3001', 'http://*.localhost:3001', 'https://*.vercel.app'].filter(Boolean),
+        connectSrc: ["'self'", ...ALLOWED_ORIGINS, 'http://*.localhost:3000', 'http://localhost:3001', 'http://*.localhost:3001', 'https://*.vercel.app', 'https://*.ngrok-free.app', 'https://*.ngrok.io'].filter(Boolean),
       },
     },
   }));
   app.use(cors({
     origin: function (origin, callback) {
-      if (!origin || process.env.NODE_ENV === 'development') return callback(null, true);
-      if (origin && /^https?:\/\/.*localhost:\d+$/.test(origin)) return callback(null, true);
+      if (!origin || process.env.NODE_ENV === 'development') {
+        return callback(null, true);
+      }
+
+      if (/^https?:\/\/([a-z0-9-]+\.)?localhost:300[01]$/.test(origin)) {
+        return callback(null, true);
+      }
+
+      if (origin && /^https?:\/\/[a-z0-9-]+\.ngrok-free\.app$/.test(origin)) return callback(null, true);
       if (origin && /^https?:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin)) return callback(null, true);
-      if (origin && /^https?:\/\/[a-z0-9-]+\.otys-store\.com$/.test(origin)) return callback(null, true);
       if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+
       callback(null, false);
     },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id', 'x-subdomain', 'ngrok-skip-browser-warning'],
   }));
   app.use(express.json({ limit: '2mb' }));
   app.use(express.urlencoded({ extended: true }));
@@ -75,6 +85,15 @@ const authLimiter = rateLimit({
       next();
     });
   }
+
+  app.use((req, res, next) => {
+    const start = Date.now();
+    res.on('finish', () => {
+      const duration = Date.now() - start;
+      console.log(`[${req.method}] ${req.url} - ${res.statusCode} (${duration}ms)`);
+    });
+    next();
+  });
 
   app.use((req, _res, next) => {
     req.prisma = prisma;
@@ -93,6 +112,7 @@ const authLimiter = rateLimit({
   });
 
   app.use('/api/auth', authLimiter, authRoutes);
+  app.use('/api/pagamento', pagamentoRoutes);
   app.use('/api/nfse', tenantMiddleware, nfseRoutes);
   app.use('/api/nfse/v2', tenantMiddleware, nfseRoutesV2);
   app.use('/api/clientes', tenantMiddleware, clienteRoutes);

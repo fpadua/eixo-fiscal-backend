@@ -149,7 +149,7 @@ async function atualizarTenantNfseUi(req, res) {
   try {
     const { id } = req.params;
     const tenant = await prisma.tenant.findUnique({ where: { id }, select: { id: true } });
-    if (!tenant) return res.status(404).json({ erro: 'Tenant não encontrado' });
+    if (!tenant) return res.status(404).json({ erro: 'Cliente não encontrado' });
 
     let updated = await uiConfigService.getUiConfig(id);
     if (parse.data.nfseVersion) {
@@ -186,7 +186,7 @@ async function atualizarTenant(req, res) {
     res.json(updated);
   } catch (error) {
     console.error('[ADMIN] Update tenant error:', error);
-    if (error.code === 'P2025') return res.status(404).json({ erro: 'Tenant não encontrado' });
+    if (error.code === 'P2025') return res.status(404).json({ erro: 'Cliente não encontrado' });
     res.status(500).json({ erro: error.message });
   }
 }
@@ -321,6 +321,52 @@ async function deletarPlano(req, res) {
   }
 }
 
+async function listarPagamentos(req, res) {
+  try {
+    const { page = 1, limit = 50, status, tenantId, startDate, endDate } = req.query;
+    const where = {};
+
+    if (status) where.status = status;
+    if (tenantId) where.tenantId = tenantId;
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+
+    const [payments, total] = await Promise.all([
+      prisma.payment.findMany({
+        where,
+        skip: (Number(page) - 1) * Number(limit),
+        take: Number(limit),
+        include: {
+          tenant: { select: { razaoSocial: true, subdomain: true, cnpj: true } },
+          plan: { select: { nome: true, slug: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.payment.count({ where }),
+    ]);
+
+    const resumo = await prisma.payment.groupBy({
+      by: ['status'],
+      _count: true,
+      _sum: { transactionAmount: true },
+    });
+
+    res.json({
+      payments,
+      total,
+      page: Number(page),
+      totalPages: Math.ceil(total / Number(limit)),
+      resumo,
+    });
+  } catch (error) {
+    console.error('[ADMIN] List payments error:', error);
+    res.status(500).json({ erro: error.message });
+  }
+}
+
 async function atualizarUsuario(req, res) {
   try {
     const { id } = req.params;
@@ -360,4 +406,5 @@ module.exports = {
   criarPlano,
   atualizarPlano,
   deletarPlano,
+  listarPagamentos,
 };
