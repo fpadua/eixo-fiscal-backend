@@ -154,7 +154,7 @@ function _assinarElemento(xml, idElemento, credenciais, options = {}) {
   const sig = _criarAssinatura(privateKeyPem, certPem, safeId);
 
   const computeOptions = {
-    location: { reference: `//*[@Id='${safeId}']`, action: 'after' },
+    location: { reference: `//*[@Id='${safeId}']`, action: options.action || 'after' },
   };
   // NFS-e Nacional v1.01: vedado prefixo de namespace na assinatura (manual 8.1 / declaração namespace)
   if (options.prefix) {

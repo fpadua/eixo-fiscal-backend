@@ -2,6 +2,50 @@ const nfseService = require('../../services/v2/nfse.service');
 const { getConfig } = require('../../config');
 const { TenantSettingsRepository } = require('../../repositories/tenant.repository');
 const taxTables = require('../../services/v2/tax-tables.service');
+const ClientRepository = require('../../repositories/client.repository');
+const InvoiceRepository = require('../../repositories/invoice.repository');
+
+async function findOrCreateClient(tenantId, tomador) {
+  // v2 uses 'cpf' or 'cnpj' keys, v1 used 'documento'
+  const doc = (tomador.cpf || tomador.cnpj || tomador.documento || '').replace(/\D/g, '');
+  if (!doc) return null;
+  const repo = new ClientRepository(tenantId);
+  let client = await repo.findByCpfCnpj(doc);
+  if (!client) {
+    client = await repo.create({
+      cpfCnpj: doc,
+      nomeRazaoSocial: tomador.razaoSocial || 'Tomador sem nome',
+      email: tomador.email,
+      telefone: tomador.fone,
+      endereco: tomador.endereco || {},
+    });
+  }
+  return client;
+}
+
+async function salvarInvoice(tenantId, client, dados, resultado) {
+  const invRepo = new InvoiceRepository(tenantId);
+  const valorTotal = dados.servico?.valorServicos || 0;
+  
+  // Extrair da estrutura v2: GerarNfseResposta.ListaNfse.CompNfse.NFSe.infNFSe
+  const nfse = resultado.dados?.GerarNfseResposta?.ListaNfse?.CompNfse?.NFSe?.infNFSe || {};
+  const dps = nfse.DPS?.infDPS || {};
+  
+  return invRepo.create({
+    clientId: client.id,
+    numeroNota: nfse.nNFSe ? Number(nfse.nNFSe) : null,
+    serie: dps.serie || dados.rps?.serie || '8',
+    tipoNfse: 'NFS-e',
+    status: resultado.sucesso ? 'emitida' : 'erro',
+    xmlEnviado: resultado.xmlEnviado,
+    xmlRetorno: resultado.xmlResposta,
+    chaveAcesso: dps.Id || resultado.codigoVerificacao,
+    valorTotal,
+    dataEmissao: dps.dhEmi ? new Date(dps.dhEmi) : new Date(),
+    urlImpressao: resultado.urlImpressao,
+    protocolo: resultado.protocolo,
+  });
+}
 
 function nonEmpty(value) {
   const text = String(value ?? '').trim();
@@ -132,6 +176,25 @@ async function gerarNfse(req, res) {
     }
     const dados = withTenantPrestador(req.body, req.tenant);
     const resultado = await nfseService.gerarNfse(dados, pfxBuffer, password);
+
+    // Persist invoice
+    console.log('[DEBUG V2] Resultado da emissão:', JSON.stringify(resultado));
+    console.log('[DEBUG V2] Dados do tomador:', JSON.stringify(dados.tomador));
+
+    if (resultado.sucesso && dados.tomador) {
+        console.log('[DEBUG V2] Tentando persistir invoice...');
+        const client = await findOrCreateClient(tenantId, dados.tomador);
+        if (client) {
+            console.log('[DEBUG V2] Cliente encontrado/criado, salvando invoice...');
+            await salvarInvoice(tenantId, client, dados, resultado);
+            console.log('[DEBUG V2] Invoice salva com sucesso.');
+        } else {
+            console.log('[DEBUG V2] Falha ao encontrar/criar cliente.');
+        }
+    } else {
+        console.log('[DEBUG V2] Não persistido: sucesso?', resultado.sucesso, 'tomador?', !!dados.tomador);
+    }
+
     res.json(resultado);
   } catch (err) {
     if (err.code === 'VALIDACAO_DPS_V2') {
@@ -199,10 +262,18 @@ async function recepcionarLoteDps(req, res) {
 async function consultarLoteDps(req, res) {
   try {
     const { protocolo } = req.params;
+    const tenantId = req.tenantId || 'default-tenant-id';
+    const { pfxBuffer, password } = await loadCert(tenantId);
+    if (!pfxBuffer || !password) {
+      return res.status(400).json({ sucesso: false, erro: 'Certificado ou senha não fornecidos/válidos.' });
+    }
     const prestador = await getPrestadorConsulta(req);
-    const resultado = await nfseService.consultarLoteDps(protocolo, prestador.documento, prestador.inscricaoMunicipal);
+    const resultado = await nfseService.consultarLoteDps(protocolo, pfxBuffer, password, prestador.documento, prestador.inscricaoMunicipal);
     res.json(resultado);
   } catch (err) {
+    if (err.message.includes('Falha ao carregar certificado') || err.message.includes('Senha do certificado PKCS#12 inválida')) {
+      return res.status(401).json({ sucesso: false, erro: `Erro de certificado: ${err.message}` });
+    }
     return responderErro(res, err);
   }
 }
@@ -210,10 +281,18 @@ async function consultarLoteDps(req, res) {
 async function consultarSituacaoLote(req, res) {
   try {
     const { protocolo } = req.params;
+    const tenantId = req.tenantId || 'default-tenant-id';
+    const { pfxBuffer, password } = await loadCert(tenantId);
+    if (!pfxBuffer || !password) {
+      return res.status(400).json({ sucesso: false, erro: 'Certificado ou senha não fornecidos/válidos.' });
+    }
     const prestador = await getPrestadorConsulta(req);
-    const resultado = await nfseService.consultarSituacaoLote(protocolo, prestador.documento, prestador.inscricaoMunicipal);
+    const resultado = await nfseService.consultarSituacaoLote(protocolo, pfxBuffer, password, prestador.documento, prestador.inscricaoMunicipal);
     res.json(resultado);
   } catch (err) {
+    if (err.message.includes('Falha ao carregar certificado') || err.message.includes('Senha do certificado PKCS#12 inválida')) {
+      return res.status(401).json({ sucesso: false, erro: `Erro de certificado: ${err.message}` });
+    }
     return responderErro(res, err);
   }
 }
@@ -268,10 +347,18 @@ async function consultarNfsePorFaixa(req, res) {
 async function consultarNfseServicoPrestado(req, res) {
   try {
     const { dataInicial, dataFinal, pagina } = req.query;
+    const tenantId = req.tenantId || 'default-tenant-id';
+    const { pfxBuffer, password } = await loadCert(tenantId);
+    if (!pfxBuffer || !password) {
+      return res.status(400).json({ sucesso: false, erro: 'Certificado ou senha não fornecidos/válidos.' });
+    }
     const prestador = await getPrestadorConsulta(req);
-    const resultado = await nfseService.consultarNfseServicoPrestado(dataInicial, dataFinal, parseInt(pagina, 10) || 1, prestador.documento, prestador.inscricaoMunicipal);
+    const resultado = await nfseService.consultarNfseServicoPrestado(dataInicial, dataFinal, parseInt(pagina, 10) || 1, pfxBuffer, password, prestador.documento, prestador.inscricaoMunicipal);
     res.json(resultado);
   } catch (err) {
+    if (err.message.includes('Falha ao carregar certificado') || err.message.includes('Senha do certificado PKCS#12 inválida')) {
+      return res.status(401).json({ sucesso: false, erro: `Erro de certificado: ${err.message}` });
+    }
     return responderErro(res, err);
   }
 }
@@ -279,10 +366,18 @@ async function consultarNfseServicoPrestado(req, res) {
 async function consultarNfseServicoTomado(req, res) {
   try {
     const { cnpj, dataInicial, dataFinal, pagina } = req.query;
+    const tenantId = req.tenantId || 'default-tenant-id';
+    const { pfxBuffer, password } = await loadCert(tenantId);
+    if (!pfxBuffer || !password) {
+      return res.status(400).json({ sucesso: false, erro: 'Certificado ou senha não fornecidos/válidos.' });
+    }
     const prestador = await getPrestadorConsulta(req);
-    const resultado = await nfseService.consultarNfseServicoTomado(cnpj || prestador.documento, dataInicial, dataFinal, parseInt(pagina, 10) || 1, prestador.inscricaoMunicipal);
+    const resultado = await nfseService.consultarNfseServicoTomado(cnpj || prestador.documento, dataInicial, dataFinal, parseInt(pagina, 10) || 1, pfxBuffer, password, prestador.inscricaoMunicipal);
     res.json(resultado);
   } catch (err) {
+    if (err.message.includes('Falha ao carregar certificado') || err.message.includes('Senha do certificado PKCS#12 inválida')) {
+      return res.status(401).json({ sucesso: false, erro: `Erro de certificado: ${err.message}` });
+    }
     return responderErro(res, err);
   }
 }
@@ -335,20 +430,36 @@ async function substituirNfse(req, res) {
 async function consultarUrlNfse(req, res) {
   try {
     const { numero } = req.params;
+    const tenantId = req.tenantId || 'default-tenant-id';
+    const { pfxBuffer, password } = await loadCert(tenantId);
+    if (!pfxBuffer || !password) {
+      return res.status(400).json({ sucesso: false, erro: 'Certificado ou senha não fornecidos/válidos.' });
+    }
     const prestador = await getPrestadorConsulta(req);
-    const resultado = await nfseService.consultarUrlNfse(numero, prestador.documento, prestador.inscricaoMunicipal);
+    const resultado = await nfseService.consultarUrlNfse(numero, pfxBuffer, password, prestador.documento, prestador.inscricaoMunicipal);
     res.json(resultado);
   } catch (err) {
+    if (err.message.includes('Falha ao carregar certificado') || err.message.includes('Senha do certificado PKCS#12 inválida')) {
+      return res.status(401).json({ sucesso: false, erro: `Erro de certificado: ${err.message}` });
+    }
     return responderErro(res, err);
   }
 }
 
 async function consultarDadosCadastrais(req, res) {
   try {
+    const tenantId = req.tenantId || 'default-tenant-id';
+    const { pfxBuffer, password } = await loadCert(tenantId);
+    if (!pfxBuffer || !password) {
+      return res.status(400).json({ sucesso: false, erro: 'Certificado ou senha não fornecidos/válidos.' });
+    }
     const prestador = await getPrestadorConsulta(req);
-    const resultado = await nfseService.consultarDadosCadastrais(prestador.documento, prestador.inscricaoMunicipal);
+    const resultado = await nfseService.consultarDadosCadastrais(pfxBuffer, password, prestador.documento, prestador.inscricaoMunicipal);
     res.json(resultado);
   } catch (err) {
+    if (err.message.includes('Falha ao carregar certificado') || err.message.includes('Senha do certificado PKCS#12 inválida')) {
+      return res.status(401).json({ sucesso: false, erro: `Erro de certificado: ${err.message}` });
+    }
     return responderErro(res, err);
   }
 }
@@ -356,10 +467,18 @@ async function consultarDadosCadastrais(req, res) {
 async function consultarDpsDisponivel(req, res) {
   try {
     const { pagina } = req.query;
+    const tenantId = req.tenantId || 'default-tenant-id';
+    const { pfxBuffer, password } = await loadCert(tenantId);
+    if (!pfxBuffer || !password) {
+      return res.status(400).json({ sucesso: false, erro: 'Certificado ou senha não fornecidos/válidos.' });
+    }
     const prestador = await getPrestadorConsulta(req);
-    const resultado = await nfseService.consultarDpsDisponivel(parseInt(pagina, 10) || 1, prestador.documento, prestador.inscricaoMunicipal);
+    const resultado = await nfseService.consultarDpsDisponivel(parseInt(pagina, 10) || 1, pfxBuffer, password, prestador.documento, prestador.inscricaoMunicipal);
     res.json(resultado);
   } catch (err) {
+    if (err.message.includes('Falha ao carregar certificado') || err.message.includes('Senha do certificado PKCS#12 inválida')) {
+      return res.status(401).json({ sucesso: false, erro: `Erro de certificado: ${err.message}` });
+    }
     return responderErro(res, err);
   }
 }

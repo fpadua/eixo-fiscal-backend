@@ -231,6 +231,14 @@ const METODOS_SOAP = {
   'ConsultarNfsePorFaixa': 'ConsultarNfsePorFaixa',
   'ConsultarSituacaoLoteRps': 'ConsultarSituacaoLoteRps',
   'ConsultarDadosCadastrais': 'ConsultarDadosCadastrais',
+  // Nacional DPS mappings (nome interno → operação real do WSDL)
+  'ConsultarNfsePorDps':         'ConsultarNfseDps',
+  'ConsultarNfseFaixa':          'ConsultarNfsePorFaixa',
+  'ConsultarNfseServicoPrestado':'ConsultarNfseServicoPrestado',
+  'ConsultarNfseServicoTomado':  'ConsultarNfseServicoTomado',
+  'ConsultarLoteDps':            'ConsultarLoteDps',
+  'ConsultarDpsDisponivel':      'ConsultarDpsDisponivel',
+  'ConsultarUrlNfse':            'ConsultarUrlNfse',
 };
 
 async function enviarSoap(operacao, xmlConteudo, pfxBuffer, password) {

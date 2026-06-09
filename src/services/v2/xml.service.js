@@ -977,12 +977,20 @@ function gerarXmlConsultaSituacaoLote(protocolo, cnpjPrestador, inscricaoMunicip
 }
 
 function gerarXmlConsultaUrlNfse(numeroNfse, cnpjPrestador, inscricaoMunicipal) {
+  // SPED NFS-e Nacional v2:
+  // - Se o valor tiver 50 dígitos → é uma chNFSe (chave de acesso) → usa <chNFSe>
+  // - Caso contrário → número sequencial → usa <nNFSe> com 15 dígitos
+  const valorLimpo = onlyDigits(String(numeroNfse));
+  const identificador = valorLimpo.length === 50
+    ? { chNFSe: valorLimpo }
+    : { nNFSe: String(numeroNfse).replace(/\D/g, '').padStart(15, '0') };
+
   const xmlObj = {
     ConsultarUrlNfseEnvio: {
       '@_xmlns': NS_NFSE,
+      '@_versao': VERSAO_SCHEMA_NACIONAL,
       Prestador: montarPrestadorLote(cnpjPrestador, inscricaoMunicipal),
-      NumeroNfse: String(numeroNfse),
-      Pagina: formatarPagina(1),
+      ...identificador,
     },
   };
 
