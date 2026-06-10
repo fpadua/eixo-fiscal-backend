@@ -129,7 +129,18 @@ async function criar(req, res) {
         }
       }
 
-      res.json({ status: result.status, id: result.id, paymentId: paymentRecord.id });
+      res.json({
+        status: result.status,
+        id: result.id,
+        paymentId: paymentRecord.id,
+        pixData: result.point_of_interaction?.transaction_data
+          ? {
+              qrCodeBase64: result.point_of_interaction.transaction_data.qr_code_base64 || null,
+              qrCode: result.point_of_interaction.transaction_data.qr_code || null,
+              ticketUrl: result.point_of_interaction.transaction_data.ticket_url || null,
+            }
+          : null,
+      });
     } catch (mpError) {
       // Marca pagamento como falha
       await prisma.payment.update({
@@ -145,4 +156,65 @@ async function criar(req, res) {
   }
 }
 
-module.exports = { webhook, criar };
+async function enviarPixEmail(req, res) {
+  try {
+    const { paymentId } = req.body;
+    if (!paymentId) {
+      return res.status(400).json({ erro: 'paymentId é obrigatório' });
+    }
+
+    const payment = await prisma.payment.findUnique({
+      where: { id: paymentId },
+      include: { tenant: true },
+    });
+
+    if (!payment || !payment.mpRawResponse) {
+      return res.status(404).json({ erro: 'Pagamento ou dados PIX não encontrados' });
+    }
+
+    const pixData = payment.mpRawResponse?.point_of_interaction?.transaction_data;
+    if (!pixData) {
+      return res.status(400).json({ erro: 'Dados PIX não disponíveis para este pagamento' });
+    }
+
+    const resendKey = process.env.RESEND_API_KEY;
+    if (!resendKey) {
+      return res.status(500).json({ erro: 'Resend não configurado' });
+    }
+
+    const { Resend } = require('resend');
+    const resend = new Resend(resendKey);
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #1a1a2e;">Pagamento via PIX</h2>
+        <p>Olá!</p>
+        <p>Você iniciou um pagamento via PIX no valor de <strong>R$ ${Number(payment.transactionAmount).toFixed(2)}</strong>.</p>
+        <p>Escaneie o QR Code abaixo ou copie o código PIX para pagar:</p>
+        ${pixData.qr_code_base64 ? `<img src="data:image/png;base64,${pixData.qr_code_base64}" alt="QR Code PIX" style="display: block; margin: 20px auto; width: 200px; height: 200px;" />` : ''}
+        <div style="background: #f5f5f5; padding: 12px; border-radius: 8px; margin: 16px 0; word-break: break-all; font-family: monospace; font-size: 12px;">
+          ${pixData.qr_code || ''}
+        </div>
+        <p style="color: #666; font-size: 14px;">Após o pagamento, a confirmação pode levar alguns segundos.</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+        <p style="color: #999; font-size: 12px;">Se você não solicitou este pagamento, ignore este e-mail.</p>
+      </div>
+    `;
+
+    const fromAddr = process.env.EMAIL_FROM || 'onboarding@resend.dev';
+    const emailResp = await resend.emails.send({
+      from: fromAddr,
+      to: payment.payerEmail,
+      subject: `Pagamento PIX - R$ ${Number(payment.transactionAmount).toFixed(2)}`,
+      html,
+    });
+
+    console.log('[PIX EMAIL] Enviado:', emailResp);
+    res.json({ success: true, message: 'E-mail enviado com sucesso' });
+  } catch (error) {
+    console.error('[PIX EMAIL] Error:', error);
+    res.status(500).json({ erro: 'Erro ao enviar e-mail' });
+  }
+}
+
+module.exports = { webhook, criar, enviarPixEmail };

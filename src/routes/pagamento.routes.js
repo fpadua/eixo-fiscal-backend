@@ -6,5 +6,6 @@ const router = Router();
 
 router.post('/webhook', ctrl.webhook);
 router.post('/criar', authMiddleware, ctrl.criar);
+router.post('/enviar-pix-email', authMiddleware, ctrl.enviarPixEmail);
 
 module.exports = router;
